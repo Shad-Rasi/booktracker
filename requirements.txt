@@ -1,0 +1,8 @@
+# Das Web-Framework für unsere UI (Slick, modern und responsives Layout ab Werk)
+nicegui>=1.4.0
+
+# Für die HTTP-Abfragen an die Google-Books- und OpenLibrary-APIs
+requests>=2.31.0
+
+# Datenbank-Treiber für SQLite (In Python eigentlich integriert, hier zur Sicherheit)
+pysqlite3-binary; platform_system=="Linux"
