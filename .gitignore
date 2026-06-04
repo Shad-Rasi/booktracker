@@ -3,3 +3,6 @@
 
 # Die lokale SQLite-Datenbank ignorieren
 data/
+
+# Nicegui-Secrets
+.nicegui/
