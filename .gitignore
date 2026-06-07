@@ -6,3 +6,6 @@ data/
 
 # Nicegui-Secrets
 .nicegui/
+
+# Irgendwas
+ __pycache__/
