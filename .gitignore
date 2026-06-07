@@ -7,5 +7,7 @@ data/
 # Nicegui-Secrets
 .nicegui/
 
-# Irgendwas
- __pycache__/
+
+# Cache-Dateien
+__pycache__/
+*.pyc
