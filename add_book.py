@@ -1,6 +1,6 @@
 from nicegui import ui
 import database
-import requests
+import book_api
 import os
 import layout
 from layout import basis_layout
@@ -60,36 +60,27 @@ def formular_rendern(edit_id=None, daten=None):
         if not isbn_wert:
             ui.notify(t('notify_isbn_warn'), type='warning')
             return
-        try:
-            url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn_wert}&key={GOOGLE_API_KEY}"
-            response = requests.get(url, timeout=5)
-            res_data = response.json()
-            if "items" not in res_data:
-                url = f"https://www.googleapis.com/books/v1/volumes?q={isbn_wert}&key={GOOGLE_API_KEY}"
-                response = requests.get(url, timeout=5)
-                res_data = response.json()
-                
-            if "items" in res_data:
-                volume_info = res_data["items"][0]["volumeInfo"]
-                titel_input.value = volume_info.get("title", "")
-                subtitle_input.value = volume_info.get("subtitle", "")
-                
-                autoren = volume_info.get("authors", [])
-                autor_input.value = ", ".join(autoren)
-                seiten_input.value = volume_info.get("pageCount", 0)
-                
-                # Erweiterte automatische API-Befüllung
-                publisher_input.value = volume_info.get("publisher", "")
-                pub_date_input.value = volume_info.get("publishedDate", "")
-                lang_input.value = volume_info.get("language", "de")
-                desc_input.value = volume_info.get("description", "")
-                
-                ui.notify(t('notify_api_success'), type='positive')
-            else:
-                ui.notify(t('notify_api_fail'), type='negative')
-        except Exception as e:
-            ui.notify(f'Fehler: {str(e)}', type='negative')
-
+            
+        # Hier rufen wir das neue, ausgelagerte Modul auf!
+        buch_daten = book_api.isbn_suche_sync(isbn_wert)
+        
+        if buch_daten:
+            titel_input.value = buch_daten['title']
+            subtitle_input.value = buch_daten['subtitle']
+            autor_input.value = buch_daten['author']
+            publisher_input.value = buch_daten['publisher']
+            pub_date_input.value = buch_daten['published_date']
+            lang_input.value = buch_daten['language']
+            desc_input.value = buch_daten['description']
+            seiten_input.value = buch_daten['pages']
+            
+            # Temporäre Cover URL für das spätere Speichern merken
+            formular_rendern.temporaere_cover_url = buch_daten['cover_url']
+            
+            ui.notify(t('notify_api_success'), type='positive')
+        else:
+            ui.notify(t('notify_api_fail'), type='negative')
+            
     def speichern():
         title = titel_input.value.strip()
         if not title:
@@ -129,7 +120,17 @@ def formular_rendern(edit_id=None, daten=None):
         }
         
         # Dynamische ID des aktuell wirkenden Nutzers nutzen!
-        database.speichere_buch_in_db(edit_id, layout.aktiver_user_id, book_data, user_data)
+        # WICHTIG: speichere_buch_in_db MUSS bei einem neuen Buch die ID zurückgeben!
+        neue_id = database.speichere_buch_in_db(edit_id, layout.aktiver_user_id, book_data, user_data)
+        
+        # Falls es ein neues Buch ist und die API ein Cover geliefert hat -> Download starten
+        if not ist_edit and neue_id:
+            cover_url = getattr(formular_rendern, 'temporaere_cover_url', None)
+            if cover_url:
+                database.lade_und_speichere_cover(neue_id, cover_url)
+                # Variable nach dem Speichern wieder leeren
+                formular_rendern.temporaere_cover_url = None
+
         ui.notify(t('notify_saved'), type='positive')
         ui.navigate.to('/')
 

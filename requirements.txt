@@ -6,3 +6,6 @@ requests>=2.31.0
 
 # Datenbank-Treiber für SQLite (In Python eigentlich integriert, hier zur Sicherheit)
 pysqlite3-binary; platform_system=="Linux"
+
+# Zur Bildersuche
+beautifulsoup4

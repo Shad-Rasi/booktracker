@@ -7,12 +7,9 @@ services:
     volumes:
       # Local Mapping: Code-Änderungen auf dem Laptop werden SOFORT im Container aktiv
       - .:/app
-      # Separates Volume für die SQLite-Datenbankdatei, damit sie Neustarts überlebt
-      - buecher_data:/app/data
+      # Direktes Mapping: Der Ordner data/ auf deinem Laptop spiegelt sich in den Container
+      - ./data:/app/data
     environment:
       - TZ=Europe/Berlin
       - PYTHONUNBUFFERED=1
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}  
-
-volumes:
-  buecher_data:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}

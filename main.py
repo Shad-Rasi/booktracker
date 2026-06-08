@@ -1,16 +1,40 @@
 import os
 from datetime import datetime
-from nicegui import ui
+from nicegui import app, ui
+from starlette.staticfiles import StaticFiles
 
+# 1. ERST: Ordner erstellen und für NiceGUI freigeben
+COVER_DIR = os.path.join('data', 'covers')
+os.makedirs(COVER_DIR, exist_ok=True)
+
+# --- NEU: Autoren-Ordner erstellen ---
+AUTHOR_DIR = os.path.join('data', 'authors')
+os.makedirs(AUTHOR_DIR, exist_ok=True)
+
+# Aktiviert die statischen Pfade ohne aggressivem Browser-Caching
+app.add_static_files('/covers', COVER_DIR, follow_symlink=True)
+app.add_static_files('/authors', AUTHOR_DIR, follow_symlink=True) # --- NEU: Freigabe im Web ---
+
+# CRITICAL CACHE-FIX: Verhindert, dass der Browser die Bilder im Cache bunkert
+for route in app.routes:
+    if route.path in ['/covers', '/authors'] and isinstance(route.app, StaticFiles): # --- ERWEITERT ---
+        route.app.headers = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+
+# 2. DANN: Deine Datenbank initialisieren
 import database
+database.init_db()
+
+# 3. ERST JETZT: Die Seiten-Module importieren
 import book
 import add_book
 import layout
 from layout import basis_layout 
 import translations
 from translations import t
-
-database.init_db()
+import import_export
+import statistics
+import authors
+import reading_calendar
 
 # Globale Container-Referenz, um den Inhalt bei Filtern live auszutauschen
 kachel_container = None
@@ -18,7 +42,6 @@ alle_buecher_cache = []
 
 def formatierte_daten_holen():
     """Holt die Rohdaten aus der DB und bereitet sie für das UI auf (inkl. Übersetzungen)."""
-    # Holt die ID dynamisch aus dem Layout-Zustand!
     rows = database.lade_buecher_aus_db(layout.aktiver_user_id)
     
     status_text_mapping = {'READING': t('reading'), 'READ': t('read'), 'UNREAD': t('unread')}
@@ -35,7 +58,7 @@ def formatierte_daten_holen():
         'status_text': status_text_mapping.get(r[5] if r[5] else 'UNREAD', t('unread')),
         'rating': r[6] if r[6] else 0,
         'special': bool(r[7]),
-        'reihe_anzeige': f"{r[9]} ({t('series_num')} {r[10]})" if r[8] and r[9] else None,
+        'reihe_anzeige': f"{r[9]} - {t('series_num')} {r[10]}" if r[8] and r[9] else None,
         'subtitle': r[13],
         'format': r[23] if r[23] else 'PHYSICAL',
         'ownership': r[24] if r[24] else 'OWNED',
@@ -81,27 +104,35 @@ def filter_anwenden():
             return
 
         for buch in gefiltert:
-            with ui.card().classes('w-full h-[340px] p-0 overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer flex flex-col relative') \
+            # FIX: Wir nutzen wieder h-auto, zwingen aber den inneren Textbereich auf eine exakte Höhe!
+            with ui.card().classes('w-full max-w-[180px] h-auto p-0 overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer flex flex-col relative mx-auto') \
                  .on('click', lambda b=buch: ui.navigate.to(f'/book/{b["id"]}')):
                 
-                ui.image(f'https://picsum.photos/seed/{buch["id"]}/300/400').classes('w-full h-48 object-cover')
+                cover_url = database.hole_cover_url(buch['id'])
+                
+                with ui.element('div').classes('w-full aspect-[2/3] bg-slate-50 flex items-center justify-center overflow-hidden border-b border-slate-100'):
+                    ui.image(cover_url).classes('w-full h-full object-cover')
 
                 # Status Badge
-                with ui.row().classes('absolute top-3 right-3 items-center gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md shadow-sm'):
-                    ui.icon(buch['status_icon']).classes(f'text-sm {buch["status_color"]}')
-                    ui.label(buch['status_text']).classes('text-[10px] font-bold text-slate-700 uppercase tracking-wider')
+                with ui.row().classes('absolute top-2 right-2 items-center gap-0.5 bg-white/90 backdrop-blur-sm px-1.5 py-0.5 rounded shadow-sm'):
+                    ui.icon(buch['status_icon']).classes(f'text-[10px] {buch["status_color"]}')
+                    ui.label(buch['status_text']).classes('text-[8px] font-bold text-slate-700 uppercase tracking-wider')
 
-                # Textbereich
-                with ui.element('div').classes('p-4 flex flex-col gap-1'):
-                    ui.label(buch['title']).classes('text-base font-bold line-clamp-1 text-slate-800 leading-tight')
-                    ui.label(buch['author']).classes('text-sm text-slate-500 line-clamp-1')
+                # TEXTBEREICH-RESCUE: Wir geben diesem Container eine unumstößliche, feste Höhe (h-[90px])
+                with ui.element('div').classes('w-full h-[90px] p-2 flex flex-col justify-between bg-white'):
+                    with ui.element('div').classes('flex flex-col gap-0.5'):
+                        # Titel-Bereinigung von den Klammern
+                        anzeige_titel = buch['title']
+                        if ' (' in anzeige_titel and anzeige_titel.endswith(')'):
+                            anzeige_titel = anzeige_titel.split(' (')[0]
+                            
+                        ui.label(anzeige_titel).classes('text-xs font-bold line-clamp-2 text-slate-800 leading-tight')
+                        ui.label(buch['author']).classes('text-[11px] text-slate-500 line-clamp-1')
                     
-                    if buch['location_name']:
-                        ui.label(f"📍 {buch['location_name']}").classes('text-xs text-slate-400 line-clamp-1 mt-1')
-                    elif buch['reihe_anzeige']:
-                        ui.label(buch['reihe_anzeige']).classes('text-xs text-blue-600 font-medium line-clamp-1 mt-1')
-                    else:
-                        ui.label(f"{buch['pages']} {t('pages')}").classes('text-xs text-slate-400 mt-1')
+                    # Unterer Info-Bereich steht durch das 'justify-between' wie angenagelt ganz unten
+                    with ui.element('div').classes('w-full pt-1 border-t border-slate-100 text-[10px] text-slate-400 min-h-[16px]'):
+                        if buch['reihe_anzeige']:
+                            ui.label(f" {buch['reihe_anzeige']}").classes('text-blue-600 font-medium line-clamp-1')
 
 
 @ui.page('/')
@@ -125,37 +156,32 @@ def hauptseite():
             with ui.row().classes('w-full items-center gap-4'):
                 suchfeld = ui.input(placeholder=t('search'), on_change=filter_anwenden).classes('flex-1 bg-white px-3 rounded border').props('clearable icon=search')
                 
-                # EXPLIZITE FUNKTION: Schaltet die Sichtbarkeit sauber um
                 def toggle_filter():
                     filter_sektion.visible = not filter_sektion.visible
 
                 ui.button(icon='tune', color='slate', on_click=toggle_filter) \
                     .classes('bg-slate-200 text-slate-700')
             
-            # Die ausklappbare Sektion - startet direkt als unsichtbar via NiceGUI-Property
+            # Die ausklappbare Sektion
             with ui.row().classes('w-full gap-4 p-2 bg-slate-50 rounded border border-slate-200 transition-all') as filter_sektion:
-                filter_sektion.visible = False # Hier nutzen wir direkt das Property
+                filter_sektion.visible = False
                 
-                # 1. Status Filter
                 status_opts = {'ALL': '🔍 ' + t('status') + ': ' + t('none'), 'UNREAD': t('unread'), 'READING': t('reading'), 'READ': t('read')}
                 status_filter = ui.select(options=status_opts, value='ALL', on_change=filter_anwenden).classes('w-44 bg-white px-2 rounded')
                 
-                # 2. Format Filter
                 format_opts = {'ALL': '📱 ' + t('format') + ': ' + t('none'), 'PHYSICAL': t('PHYSICAL'), 'AUDIOBOOK': t('AUDIOBOOK'), 'EBOOK': t('EBOOK')}
                 format_filter = ui.select(options=format_opts, value='ALL', on_change=filter_anwenden).classes('w-44 bg-white px-2 rounded')
                 
-                # 3. Besitz Filter
                 own_opts = {'ALL': '🤝 ' + t('ownership') + ': ' + t('none'), 'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT')}
                 ownership_filter = ui.select(options=own_opts, value='ALL', on_change=filter_anwenden).classes('w-44 bg-white px-2 rounded')
                 
-                # 4. Regal/Standort Filter
                 regal_opts = {'ALL': '📍 ' + t('location') + ': ' + t('none')}
                 for r_id, r_name in regale:
                     regal_opts[r_id] = r_name
                 location_filter = ui.select(options=regal_opts, value='ALL', on_change=filter_anwenden).classes('w-56 bg-white px-2 rounded')
         
         # Kachel-Grid Container initialisieren
-        kachel_container = ui.row().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6')
+        kachel_container = ui.row().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6')
         
         # Kacheln das erste Mal zeichnen
         filter_anwenden()
