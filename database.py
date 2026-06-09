@@ -93,6 +93,16 @@ def init_db():
             )
         """)
 
+        # 6. TABELLE: Benutzer-Einstellungen (Design & Layout)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_settings (
+            user_id INTEGER PRIMARY KEY,
+            view_mode TEXT DEFAULT 'PAGINATED', -- 'PAGINATED' oder 'INFINITE'
+            dark_mode BOOLEAN DEFAULT 0,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        """)
+
         # 1. Der Lesedurchgang (Erlaubt unbegrenztes Wiederholen)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS reading_cycles (
@@ -142,6 +152,51 @@ def get_user_id_by_name(username):
         cursor.execute("SELECT id FROM users WHERE name = ?", (username,))
         row = cursor.fetchone()
         return row[0] if row else None
+
+def speichere_user_in_db(name):
+    """Fügt einen neuen Benutzer in die Datenbank ein."""
+    if not name:
+        return False
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO users (name) VALUES (?)", (name.strip(),))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False # Name existiert schon (UNIQUE)
+
+def loesche_user_aus_db(user_id):
+    """Löscht einen Benutzer und kaskadiert alle seine Daten (Logs, Zyklen, Verknüpfungen)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            # Da sqlite foreign keys aktiv sind (PRAGMA), müssen wir verknüpfte Logs, 
+            # Zyklen und user_books manuell oder über Kaskade löschen. 
+            # Sicherer Weg zu Fuß, falls ON DELETE CASCADE nicht überall definiert war:
+            
+            # 1. Alle cycle_ids dieses Users holen
+            cursor.execute("SELECT id FROM reading_cycles WHERE user_id = ?", (user_id,))
+            cycle_ids = [row[0] for row in cursor.fetchall()]
+            
+            if cycle_ids:
+                platzhalter = ",".join(["?"] * len(cycle_ids))
+                # Logs löschen
+                cursor.execute(f"DELETE FROM reading_logs WHERE cycle_id IN ({platzhalter})", cycle_ids)
+            
+            # Zyklen löschen
+            cursor.execute("DELETE FROM reading_cycles WHERE user_id = ?", (user_id,))
+            # User-Buchverknüpfungen löschen
+            cursor.execute("DELETE FROM user_books WHERE user_id = ?", (user_id,))
+            # Den User selbst löschen
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Fehler beim Löschen des Benutzers: {e}")
+            return False
+
 
 def lade_buecher_aus_db(user_id):
     """Holt die Liste aller Bücher inklusive der neuen globalen Details und User-Stati."""
@@ -303,6 +358,39 @@ def lade_autor_details(autor_id):
         cursor = conn.cursor()
         cursor.execute("SELECT id, name, bio, birth_date, death_date, image_url, local_image_path FROM authors WHERE id = ?", (autor_id,))
         return cursor.fetchone()
+
+def hole_autoren_id_durch_name(user_id, autor_name):
+    """
+    Sucht die ID eines Autors anhand seines exakten Namens.
+    Stellt sicher, dass der Autor in der 'authors'-Tabelle existiert, 
+    wenn er in den Büchern des Benutzers vorkommt.
+    """
+    if not autor_name:
+        return None
+        
+    sauberer_name = autor_name.strip()
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. Versuch: Schauen, ob der Autor bereits existiert
+        cursor.execute("SELECT id FROM authors WHERE name = ?", (sauberer_name,))
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+            
+        # 2. Sicherheitsnetz: Falls die authors-Tabelle verzögert gefüllt wird, 
+        # legen wir den Eintrag schnell an (wird durch lade_alle_autoren_aus_db ohnehin synchronisiert)
+        try:
+            cursor.execute("INSERT OR IGNORE INTO authors (name) VALUES (?)", (sauberer_name,))
+            conn.commit()
+            
+            # ID des neu erzeugten Autors zurückliefern
+            cursor.execute("SELECT id FROM authors WHERE name = ?", (sauberer_name,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+        except sqlite3.Error:
+            return None
 
 def lade_buecher_von_autor(user_id, autoren_name):
     """Holt alle Bücher eines spezifischen Autors für den aktuellen User."""
@@ -596,3 +684,57 @@ def hole_cover_url(book_id: int) -> str:
         return f"/covers/{book_id}.jpg"
     # Wenn kein Cover da ist, nutzen wir ein Standard-Bild oder steuern das in der UI aus
     return "/covers/placeholder.jpg"
+
+def aktualisiere_buch_metadaten(book_id, metadaten):
+    """
+    Aktualisiert gezielt die Metadaten eines bereits existierenden Buches,
+    inklusive der Reiheninformationen, wenn diese noch leer sind.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE books
+            SET description = COALESCE(NULLIF(description, ''), ?),
+                publisher = COALESCE(NULLIF(publisher, ''), ?),
+                published_date = COALESCE(NULLIF(published_date, ''), ?),
+                pages = CASE WHEN pages IS NULL OR pages <= 1 THEN ? ELSE pages END,
+                is_series = CASE WHEN (series_name IS NULL OR series_name = '') AND ? != '' THEN 1 ELSE is_series END,
+                series_name = COALESCE(NULLIF(series_name, ''), ?),
+                series_number = CASE WHEN series_number IS NULL OR series_number = 0 THEN ? ELSE series_number END
+            WHERE id = ?
+        """, (
+            metadaten.get('description', ''),
+            metadaten.get('publisher', ''),
+            metadaten.get('published_date', ''),
+            metadaten.get('pages', 1),
+            metadaten.get('series_name', ''), # Für die Aktivierung des 'is_series' Flags
+            metadaten.get('series_name', ''),
+            metadaten.get('series_number', 0),
+            book_id
+        ))
+        conn.commit()
+
+def lade_user_settings(user_id):
+    """Lädt die UI-Einstellungen eines Nutzers. Erstellt Standardwerte, falls keine existieren."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT view_mode, dark_mode FROM user_settings WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        
+        if row:
+            return {'view_mode': row[0], 'dark_mode': bool(row[1])}
+        
+        # Standardwerte anlegen, falls noch nichts in der DB steht
+        cursor.execute("INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,))
+        conn.commit()
+        return {'view_mode': 'PAGINATED', 'dark_mode': False}
+
+def speichere_user_settings(user_id, view_mode, dark_mode):
+    """Speichert die UI-Einstellungen für den jeweiligen Nutzer dauerhaft ab."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO user_settings (user_id, view_mode, dark_mode)
+            VALUES (?, ?, ?)
+        """, (user_id, view_mode, int(dark_mode)))
+        conn.commit()

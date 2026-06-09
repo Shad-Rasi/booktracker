@@ -2,121 +2,153 @@ from nicegui import ui
 import database
 import layout
 from layout import basis_layout
+import translations
 from translations import t
 import book_api
 
 @ui.page('/authors')
 def autoren_uebersicht():
+    # 1. Darkmode-Zustand für den statischen Teil ermitteln
+    user_ui = database.lade_user_settings(layout.aktiver_user_id)
+    is_dark = user_ui['dark_mode']
+    
     with basis_layout('authors'):
-        ui.label(t('authors_title')).classes('text-2xl font-bold text-slate-700 mb-2')
-        ui.label(t('authors_subtitle')).classes('text-sm text-slate-500 mb-6')
+        ui.label(t('authors_title')).classes('text-2xl font-bold text-slate-700 dark:text-slate-100 mb-2')
+        ui.label(t('authors_subtitle')).classes('text-sm text-slate-500 dark:text-slate-400 mb-6')
         
         alle_autoren = database.lade_alle_autoren_aus_db(layout.aktiver_user_id)
         
         if not alle_autoren:
-            with ui.card().classes('w-full p-6 text-center text-slate-500'):
+            with ui.card().classes('w-full p-6 text-center bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'):
                 ui.icon('people', size='lg').classes('mx-auto mb-2')
                 ui.label(t('no_authors_found'))
             return
 
-        # --- SUCHLEISTE ---
-        with ui.card().classes('w-full p-4 bg-slate-100 shadow-sm border border-slate-200 mb-6 flex flex-col gap-3'):
+        # --- SUCHLEISTE (ERZWUNGENER DARKMODE-RAHMEN) ---
+        with ui.card().classes('w-full p-4 bg-slate-100 dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 mb-6 flex flex-col gap-3'):
             with ui.row().classes('w-full items-center gap-4'):
                 suchfeld = ui.input(
                     placeholder=t('search'), 
                     on_change=lambda: autoren_raster_refresh.refresh()
-                ).classes('flex-1 bg-white px-3 rounded border').props('clearable icon=search')
+                ).classes('flex-1 px-3 text-slate-800 dark:text-slate-100')\
+                 .props(f'clearable icon=search outlined {"dark" if is_dark else ""}') # <-outlined hinzugefügt, bg-white entfernt!
 
         # --- DYNAMISCHER KACHEL-CONTAINER ---
         @ui.refreshable
         def autoren_raster_refresh():
+            # Zustand frisch in den Refresh-Scope holen
+            user_ui_fresh = database.lade_user_settings(layout.aktiver_user_id)
+            is_dark_fresh = user_ui_fresh['dark_mode']
+            
+            bg_card = 'bg-slate-800 border-slate-700 text-slate-100' if is_dark_fresh else 'bg-slate-50 border-slate-200 text-slate-700'
+            text_author = 'text-slate-100' if is_dark_fresh else 'text-slate-700'
+            
             suchbegriff = suchfeld.value.strip().lower() if suchfeld.value else ""
             gefilterte_autoren = [a for a in alle_autoren if suchbegriff in a[1].lower()]
             
             if not gefilterte_autoren:
-                with ui.element('div').classes('w-full p-8 text-center text-slate-400 italic'):
-                    ui.label(t('no_search_results') if 'no_search_results' in layout.translations.LANGUAGES[layout.translations.aktuelle_sprache] else 'Keine passenden Autoren gefunden')
+                with ui.element('div').classes('w-full p-8 text-center text-slate-400 dark:text-slate-500 italic'):
+                    ui.label(t('no_search_results') if 'no_search_results' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Keine passenden Autoren gefunden')
                 return
 
             with ui.element('div').classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6'):
                 for a_id, a_name, a_bio, a_img, a_local_img in gefilterte_autoren:
-                    with ui.card().classes('p-4 cursor-pointer hover:shadow-md transition-shadow items-center text-center bg-slate-50 border border-slate-200 h-full flex flex-col justify-between') \
+                    with ui.card().classes(f'p-4 cursor-pointer hover:shadow-md transition-shadow items-center text-center h-full flex flex-col justify-between border {bg_card}') \
                             .on('click', lambda _, current_id=a_id: ui.navigate.to(f'/author/{current_id}')):
                         
                         with ui.element('div').classes('flex flex-col items-center w-full'):
                             if a_local_img:
                                 ui.image(a_local_img).classes('w-20 h-20 rounded-full object-cover shadow-sm mb-3')
                             else:
-                                with ui.element('div').classes('w-20 h-20 rounded-full bg-slate-300 text-slate-600 flex items-center justify-center text-2xl font-bold mb-3 shadow-inner'):
+                                with ui.element('div').classes('w-20 h-20 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-2xl font-bold mb-3 shadow-inner'):
                                     ui.label(a_name[0] if a_name else '?')
                             
-                            ui.label(a_name).classes('font-bold text-slate-700 text-sm md:text-base line-clamp-2 leading-snug')
+                            ui.label(a_name).classes(f'font-bold text-sm md:text-base line-clamp-2 leading-snug {text_author}')
                         
-                        ui.label(t('view_profile')).classes('text-[11px] text-blue-500 mt-3 uppercase tracking-wider font-semibold block')
+                        ui.label(t('view_profile')).classes('text-[11px] text-blue-500 dark:text-blue-400 mt-3 uppercase tracking-wider font-semibold block')
 
         autoren_raster_refresh()
 
 
 @ui.page('/author/{author_id}')
 def autor_detailseite(author_id: int):
+    user_ui = database.lade_user_settings(layout.aktiver_user_id)
+    is_dark = user_ui['dark_mode']
+    
     with basis_layout('authors'):
         
         ui.button(t('back_to_authors'), icon='arrow_back', on_click=lambda: ui.navigate.to('/authors')) \
-            .props('flat dense').classes('text-slate-500 mb-4')
+            .props('flat dense').classes('text-slate-500 dark:text-slate-400 mb-4')
+
+        autor_details = database.lade_autor_details(author_id)
+        autor_name_fuer_buecher = autor_details[1] if autor_details else ""
+        buecher = database.lade_buecher_von_autor(layout.aktiver_user_id, autor_name_fuer_buecher)
+        autoren_isbns = [b[3] for b in buecher if b[3] and str(b[3]).strip()]
 
         @ui.refreshable
         def profil_kopf_refresh():
+            user_ui_fresh = database.lade_user_settings(layout.aktiver_user_id)
+            is_dark_fresh = user_ui_fresh['dark_mode']
+            dark_prop_fresh = 'dark' if is_dark_fresh else ''
+            
+            # Farb-Definitionen für das Autoren-Profil
+            bg_profile_card = 'bg-slate-800 border-slate-700 text-slate-200' if is_dark_fresh else 'bg-slate-50 border-slate-200 text-slate-700'
+            text_name = 'text-slate-100' if is_dark_fresh else 'text-slate-800'
+            text_bio = 'text-slate-300' if is_dark_fresh else 'text-slate-600'
+            style_modal = 'background-color: #1e293b; color: #f8fafc;' if is_dark_fresh else ''
+            
             autor = database.lade_autor_details(author_id)
             if not autor:
-                ui.label('Autor nicht gefunden!').classes('text-red-500')
+                ui.label(t('not_found')).classes('text-red-500 font-bold text-lg')
                 return
                 
             a_id, a_name, a_bio, a_birth, a_death, a_img, a_local_img = autor
             
             # --- AUTOREN KOPFZEILE (PROFIL) ---
-            with ui.card().classes('w-full p-6 bg-slate-50 border border-slate-200 shadow-sm mb-6'):
+            with ui.card().classes(f'w-full p-6 shadow-sm mb-6 border {bg_profile_card}'):
                 with ui.row().classes('w-full items-center gap-6 no-wrap flex-col sm:flex-row'):
                     
                     if a_local_img:
                         ui.image(a_local_img).classes('w-32 h-32 rounded-full object-cover shadow-md')
                     else:
-                        with ui.element('div').classes('w-32 h-32 rounded-full bg-slate-300 text-slate-600 flex items-center justify-center text-4xl font-bold shadow-inner flex-shrink-0'):
+                        with ui.element('div').classes('w-32 h-32 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-4xl font-bold shadow-inner flex-shrink-0'):
                             ui.label(a_name[0] if a_name else '?')
                     
                     with ui.element('div').classes('flex-1 text-center sm:text-left'):
                         with ui.row().classes('w-full items-center justify-between sm:justify-start gap-2'):
-                            ui.label(a_name).classes('text-3xl font-black text-slate-800')
+                            ui.label(a_name).classes(f'text-3xl font-black {text_name}')
                             
                             # BUTTON-BOX FÜR UTILITIES
                             with ui.row().classes('gap-1 items-center'):
-                                # 1. Zauberstab (API)
+                                # 1. Zauberstab
                                 async def api_abruf_starten():
-                                    ui.notify(f'Suche Daten für {a_name}...', type='info')
-                                    api_data = await book_api.hole_autoren_metadaten_async(a_name)
+                                    ui.notify(f'Suche Daten für {a_name} bei isbn.de...', type='info')
+                                    api_data = await book_api.hole_autoren_metadaten_async(a_name, isbn_liste=autoren_isbns)
                                     
                                     if api_data:
                                         database.aktualisiere_autor_in_db(
                                             a_id, api_data['bio'], api_data['birth_date'], 
                                             api_data['death_date'], api_data['image_url']
                                         )
-                                        ui.notify('Autorendaten erfolgreich aktualisiert!', type='positive')
+                                        ui.notify('Autorendaten erfolgreich aktualisiert! 🎉', type='positive')
                                         profil_kopf_refresh.refresh()
                                     else:
-                                        ui.notify('Keine Daten bei Open Library gefunden.', type='warning')
+                                        ui.notify('Keine Daten auf isbn.de oder Open Library gefunden.', type='warning')
 
                                 ui.button(icon='auto_fix_high', on_click=api_abruf_starten) \
-                                    .props('round flat dense').classes('text-blue-500 hover:bg-blue-50')
+                                    .props('round flat dense').classes('text-blue-500 dark:text-blue-400')
                                 
                                 # 2. Stift (Manuelles Editieren via Dialog)
                                 def manuelles_editieren():
-                                    with ui.dialog() as edit_dialog, ui.card().classes('w-full max-w-lg p-6 flex flex-col gap-4'):
-                                        ui.label(f'"{a_name}" {t("edit_author_title")}').classes('text-lg font-bold text-slate-700')
+                                    # REPARIERT: .style(style_modal) zwingt das Bearbeiten-Fenster in den Darkmode
+                                    with ui.dialog() as edit_dialog, ui.card().classes('w-full max-w-lg p-6 flex flex-col gap-4').style(style_modal):
+                                        ui.label(f'"{a_name}" {t("edit_author_title")}').classes('text-lg font-bold text-slate-700 dark:text-slate-100')
                                         
-                                        # Eingabefelder vorbefüllen
-                                        birth_input = ui.input(label=t('author_birth'), value=a_birth or '').classes('w-full')
-                                        death_input = ui.input(label=t('author_death'), value=a_death or '').classes('w-full')
-                                        img_input = ui.input(label=t('author_img_url'), value=a_img or '').classes('w-full')
-                                        bio_input = ui.textarea(label=t('author_bio'), value=a_bio or '').classes('w-full').props('rows=5')
+                                        # Eingabefelder mit Props ausstatten
+                                        birth_input = ui.input(label=t('author_birth'), value=a_birth or '').classes('w-full').props(dark_prop_fresh)
+                                        death_input = ui.input(label=t('author_death'), value=a_death or '').classes('w-full').props(dark_prop_fresh)
+                                        img_input = ui.input(label=t('author_img_url'), value=a_img or '').classes('w-full').props(dark_prop_fresh)
+                                        bio_input = ui.textarea(label=t('author_bio'), value=a_bio or '').classes('w-full').props(f'rows=5 {dark_prop_fresh}')
                                         
                                         async def daten_speichern():
                                             database.aktualisiere_autor_in_db(
@@ -128,44 +160,47 @@ def autor_detailseite(author_id: int):
                                             )
                                             ui.notify(t('notify_author_updated'), type='positive')
                                             edit_dialog.close()
-                                            profil_kopf_refresh.refresh() # Aktualisiert den Kopfbereich live
+                                            profil_kopf_refresh.refresh()
 
                                         with ui.row().classes('w-full justify-end gap-2 mt-2'):
-                                            ui.button(t('cancel'), on_click=edit_dialog.close).classes('text-slate-500').props('flat')
-                                            ui.button(t('save'), on_click=daten_speichern).classes('bg-slate-700 text-white px-4')
+                                            ui.button(t('cancel'), on_click=edit_dialog.close).classes('text-slate-500 dark:text-slate-400').props('flat')
+                                            ui.button(t('save'), on_click=daten_speichern).classes('bg-slate-700 dark:bg-slate-600 text-white px-4')
                                     
                                     edit_dialog.open()
 
                                 ui.button(icon='edit', on_click=manuelles_editieren) \
-                                    .props('round flat dense').classes('text-slate-500 hover:bg-slate-100')
+                                    .props('round flat dense').classes('text-slate-500 dark:text-slate-400')
                         
                         if a_birth:
                             lebensdaten = f"*{a_birth}"
                             if a_death: lebensdaten += f"  †{a_death}"
-                            ui.label(lebensdaten).classes('text-xs text-slate-400 font-mono mt-1')
+                            ui.label(lebensdaten).classes('text-xs text-slate-400 dark:text-slate-500 font-mono mt-1')
                             
-                        ui.label(a_bio if a_bio else t('no_bio_available')).classes('text-sm text-slate-600 mt-3 italic max-w-2xl block whitespace-pre-line')
+                        ui.label(a_bio if a_bio else t('no_bio_available')).classes(f'text-sm mt-3 italic max-w-2xl block whitespace-pre-line {text_bio}')
 
         profil_kopf_refresh()
 
-        # --- BÜCHER DIESES AUTORS ---
-        ui.label(t('books_by_author')).classes('text-xl font-bold text-slate-700 mb-4')
-        autor_name_fuer_buecher = database.lade_autor_details(author_id)[1]
-        buecher = database.lade_buecher_von_autor(layout.aktiver_user_id, autor_name_fuer_buecher)
+        # --- BÜCHER DIESES AUTORS (BACKGROUND FIXED) ---
+        ui.label(t('books_by_author')).classes('text-xl font-bold text-slate-700 dark:text-slate-100 mb-4')
+        
+        # Dynamischen Hintergrund für die Buchkarten ermitteln
+        bg_buch_karte = 'bg-slate-800 border-slate-700' if is_dark else 'bg-white border-slate-100'
         
         with ui.grid(columns='1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4').classes('gap-4 w-full'):
             for b_id, b_title, b_author, b_isbn, b_pages, b_status, b_rating in buecher:
-                with ui.card().classes('p-4 cursor-pointer hover:shadow-md transition-shadow bg-white border border-slate-100') \
+                # REPARIERT: bg_buch_karte zwingt das Quasar-Standardweiß in die Knie
+                with ui.card().classes(f'p-4 cursor-pointer hover:shadow-md transition-shadow border {bg_buch_karte}') \
                         .on('click', lambda _, current_book_id=b_id: ui.navigate.to(f'/book/{current_book_id}')):
                     with ui.row().classes('w-full items-center gap-3 no-wrap'):
                         cover_pfad = database.hole_cover_url(b_id)
-                        with ui.element('div').classes('w-12 h-18 bg-slate-200 rounded flex items-center justify-center text-xs text-slate-400 shadow-sm flex-shrink-0 overflow-hidden'):
+                        with ui.element('div').classes('w-12 h-18 bg-slate-200 dark:bg-slate-900 rounded flex items-center justify-center text-xs text-slate-400 dark:text-slate-500 shadow-sm flex-shrink-0 overflow-hidden'):
                             if cover_pfad != "/covers/placeholder.jpg":
                                 ui.image(cover_pfad).classes('w-full h-full object-cover')
                             else:
                                 ui.icon('book', size='sm')
                         with ui.element('div').classes('overflow-hidden flex-1'):
-                            ui.label(b_title).classes('font-bold text-sm text-slate-700 line-clamp-2 leading-tight')
-                            ui.label(f"{b_pages or '?'} {t('pages_short')}").classes('text-xs text-slate-400 mt-0.5')
+                            ui.label(b_title).classes('font-bold text-sm text-slate-700 dark:text-slate-100 line-clamp-2 leading-tight')
+                            ui.label(f"{b_pages or '?'} {t('pages_short')}").classes('text-xs text-slate-400 dark:text-slate-500 mt-0.5')
+                            
                             badge_color = 'emerald' if b_status == 'READ' else ('amber' if b_status == 'READING' else 'slate')
                             ui.badge(t(b_status.lower()), color=badge_color).classes('text-[10px] px-1.5 py-0.5 mt-1')

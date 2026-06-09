@@ -140,66 +140,230 @@ async def google_bildsuche_async(titel, autor, isbn=""):
     print(f"Cover-Suche erfolgreich! {len(bild_urls)} Bilder für '{titel}' bereitgestellt.")
     return bild_urls[:8]
 
-async def hole_autoren_metadaten_async(autoren_name):
+async def hole_autoren_metadaten_async(autoren_name, isbn_liste=None):
     """
-    Sucht einen Autoren bei Open Library und gibt Bio, Lebensdaten 
-    und die URL zum Profilbild zurück.
+    Sucht vorrangig bei isbn.de nach der ersten Biografie und prüft Cover-Bilder.
+    Nutzt Open Library STRENG NUR ALS FALLBACK für fehlende Infos/Bilder.
     """
     if not autoren_name or autoren_name.lower() == "unbekannter autor":
         return None
         
-    # Open Library reagiert allergisch auf Zusätze wie "(Hrsg.)" oder Kommata.
-    # Wir nehmen den reinen Namen für die Suche.
     sauberer_name = autoren_name.split(',')[0].split('(')[0].strip()
+    
+    final_data = {
+        'bio': '',
+        'birth_date': '',
+        'death_date': '',
+        'image_url': None
+    }
+    
+    # === SPUND 1: REIN IN DEN ISBN.DE SCRAPER ===
+    isbn_de_ergebnis = await scrape_autor_details_isbn_de_async(sauberer_name, isbn_liste)
+    if isbn_de_ergebnis:
+        final_data['bio'] = isbn_de_ergebnis.get('bio', '')
+        final_data['birth_date'] = isbn_de_ergebnis.get('birth_date', '')
+        final_data['image_url'] = isbn_de_ergebnis.get('image_url', None)
+
+    # === SPUND 2: OPEN LIBRARY ALS BACKUP / ERGÄNZUNG ===
+    # WICHTIG: Open Library darf die Bio NUR ergänzen, wenn isbn.de absolut NICHTS geliefert hat!
+    import urllib.parse
+    import httpx
+    
     search_url = f"https://openlibrary.org/search/authors.json?q={urllib.parse.quote_plus(sauberer_name)}"
     
     async with httpx.AsyncClient(follow_redirects=True, timeout=8.0) as client:
         try:
-            # 1. Schritt: ID des Autors suchen
             response = await client.get(search_url)
+            if response.status_code == 200:
+                data = response.json()
+                docs = data.get("docs", [])
+                
+                if docs:
+                    author_key = docs[0].get("key")
+                    if author_key:
+                        detail_url = f"https://openlibrary.org/authors/{author_key}.json"
+                        detail_res = await client.get(detail_url)
+                        
+                        if detail_res.status_code == 200:
+                            detail_data = detail_res.json()
+                            
+                            # Lebensdaten und Bild-Fallback (das ist okay, da isbn.de das seltener hat)
+                            if not final_data['birth_date'] and detail_data.get('birth_date'):
+                                final_data['birth_date'] = detail_data['birth_date']
+                                
+                            if detail_data.get('death_date'):
+                                final_data['death_date'] = detail_data['death_date']
+                                
+                            if not final_data['image_url']:
+                                photos = detail_data.get("photos", [])
+                                if photos and photos[0] > 0:
+                                    final_data['image_url'] = f"https://covers.openlibrary.org/b/id/{photos[0]}-L.jpg"
+                            
+                            # STRENGER SCHUTZ FÜR DIE BIOGRAFIE:
+                            # Nur wenn isbn.de keine Bio gefunden hat, laden wir die von Open Library
+                            if not final_data['bio'].strip():
+                                bio_raw = detail_data.get("bio", "")
+                                ol_bio = bio_raw.get("value", "") if isinstance(bio_raw, dict) else bio_raw
+                                final_data['bio'] = ol_bio
+                                
+        except Exception as e:
+            print(f"Fehler beim OpenLibrary-Fallback für {autoren_name}: {e}")
+
+    if not final_data['bio'] and not final_data['image_url']:
+        return None
+        
+    return final_data
+
+async def scrape_autor_details_isbn_de_async(sauberer_name, isbn_liste=None):
+    """Scrapt die ERSTE Biografie von isbn.de und filtert das störende HTML-Modal heraus."""
+    name_url_format = sauberer_name.replace(" ", "+")
+    url = f"https://www.isbn.de/person/{name_url_format}"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    from bs4 import BeautifulSoup
+    import re
+    import httpx
+    
+    res_daten = {'bio': '', 'birth_date': '', 'image_url': None}
+    
+    async with httpx.AsyncClient(timeout=5.0, headers=headers, follow_redirects=True) as client:
+        try:
+            response = await client.get(url)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                article = soup.find('article', id='content')
+                
+                if article:
+                    # STRENG NUR DAS ERSTE h2 ANFASSEN (Verhindert Dubletten)
+                    # --- TEXT-EXTRAKTION (BASIEREND AUF DER ECHTEN HTML-STRUKTUR) ---
+                    erstes_h2 = article.find('h2')
+                    if erstes_h2:
+                        # Wir gehen alle nachfolgenden Geschwisterelemente des h2 durch
+                        for sibling in erstes_h2.find_next_siblings():
+                            # Wenn wir auf das nächste h2 stoßen, stoppen wir (Ende des ersten Verlagsblocks)
+                            if sibling.name == 'h2':
+                                break
+                            
+                            # Wir suchen nach einem div, das den Text enthält
+                            if sibling.name == 'div':
+                                # Wenn es der Bild-Container mit dem Modal ist, ignorieren wir ihn
+                                if sibling.find('div', id='myModal') or sibling.get('style') == 'float:right;':
+                                    continue
+                                
+                                # Das hier ist das saubere Text-Div!
+                                text = sibling.get_text(strip=True)
+                                if text and not text.startswith("Hinweis:"):
+                                    res_daten['bio'] = text
+                                    break # Text gefunden, Schleife beenden
+
+                    # Geburtsdaten-Extraktion aus der bereinigten Biografie
+                    if res_daten['bio']:
+                        jahr_match = re.search(r'(\d{4})\s+geborene', res_daten['bio'])
+                        datum_match = re.search(r'am\s+(\d{1,2}\.\s*[a-zA-ZüäöÖÄÜß]+|\d{2}\.\d{2}\.)\s*(\d{4})', res_daten['bio'])
+                        if datum_match:
+                            res_daten['birth_date'] = f"{datum_match.group(1)} {datum_match.group(2)}".strip()
+                        elif jahr_match:
+                            res_daten['birth_date'] = jahr_match.group(1)
+        except Exception as e:
+            print(f"Fehler beim Scrapen von isbn.de Person: {e}")
+
+        # --- BILD-VERARBEITUNG BLEIBT EXAKT WIE SIE WAR ---
+        if isbn_liste and isinstance(isbn_liste, list):
+            for isbn in isbn_liste:
+                isbn_clean = str(isbn).strip().replace("-", "")
+                if len(isbn_clean) != 13:
+                    continue
+                
+                test_bild_url = f"https://lesen.isbn.de/{isbn_clean}_autorenbild-01.jpg"
+                
+                try:
+                    img_check = await client.head(test_bild_url, timeout=2.5)
+                    if img_check.status_code == 200:
+                        res_daten['image_url'] = test_bild_url
+                        print(f"🟢 Autorenbild-Treffer auf lesen.isbn.de für ISBN: {isbn_clean}")
+                        break
+                except Exception:
+                    pass
+
+    return res_daten if (res_daten['bio'] or res_daten['image_url']) else None
+
+
+async def scrape_buch_details_isbn_de_async(isbn_wert):
+    """Scrapt Buchinformationen inklusive Reihen-Details direkt von isbn.de."""
+    if not isbn_wert:
+        return None
+        
+    isbn_clean = str(isbn_wert).strip().replace("-", "")
+    url = f"https://www.isbn.de/buch/{isbn_clean}"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    from bs4 import BeautifulSoup
+    import json
+    import re
+    
+    async with httpx.AsyncClient(timeout=6.0, headers=headers, follow_redirects=True) as client:
+        try:
+            response = await client.get(url)
             if response.status_code != 200:
                 return None
                 
-            data = response.json()
-            docs = data.get("docs", [])
-            if not docs:
-                return None
-                
-            # Wir nehmen den ersten, relevantesten Treffer
-            author_key = docs[0].get("key") # Liefert z.B. "OL26320A"
-            if not author_key:
-                return None
-                
-            # 2. Schritt: Detail-Daten mit der ID abfragen
-            detail_url = f"https://openlibrary.org/authors/{author_key}.json"
-            detail_res = await client.get(detail_url)
-            if detail_res.status_code != 200:
-                return None
-                
-            detail_data = detail_res.json()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            data = {}
             
-            # Biografie extrahieren (kann ein String oder ein Dict sein)
-            bio_raw = detail_data.get("bio", "")
-            bio = bio_raw.get("value", "") if isinstance(bio_raw, dict) else bio_raw
-            
-            # Lebensdaten extrahieren
-            birth_date = detail_data.get("birth_date", "")
-            death_date = detail_data.get("death_date", "")
-            
-            # Bild-URL generieren (falls ein Foto hinterlegt ist)
-            # Open Library nutzt IDs aus dem 'photos'-Array
-            photos = detail_data.get("photos", [])
-            image_url = ""
-            if photos and photos[0] > 0:
-                image_url = f"https://covers.openlibrary.org/b/id/{photos[0]}-L.jpg"
-                
-            return {
-                'bio': bio,
-                'birth_date': birth_date,
-                'death_date': death_date,
-                'image_url': image_url
-            }
+            # 1. JSON-LD für Basisdaten auslesen (Klappentext, Verlag, Datum, Seiten)
+            script_tag = soup.find('script', type='application/ld+json')
+            if script_tag:
+                try:
+                    json_data = json.loads(script_tag.string)
+                    data['description'] = json_data.get('description', '')
+                    data['publisher'] = json_data.get('publisher', {}).get('name', '') if isinstance(json_data.get('publisher'), dict) else json_data.get('publisher', '')
+                    data['published_date'] = json_data.get('datePublished', '')
+                    data['pages'] = int(json_data.get('numberOfPages', 1))
+                except Exception as json_err:
+                    print(f"JSON-LD Fehler: {json_err}")
+
+            # 2. PRÄZISER HTML-SCAN FÜR DIE REIHE
+            # Wir suchen in der Infotabelle gezielt nach dem Kästchen, das "Reihe" enthält
+            infotab = soup.find('div', class_='infotab')
+            if infotab:
+                for row_div in infotab.find_all('div', recursive=False):
+                    row_text = row_div.get_text()
+                    
+                    if 'Reihe' in row_text:
+                        reihen_link = row_div.find('a')
+                        if reihen_link:
+                            # Reihen-Name extrahieren (z.B. "Die Buchhändlerinnen von Frankfurt")
+                            data['series_name'] = reihen_link.get_text(strip=True)
+                            
+                            # Bandnummer am Ende des gesamten Texts extrahieren
+                            voller_text = row_div.get_text(strip=True)
+                            nummer_match = re.search(r'(\d+)\s*$', voller_text)
+                            data['series_number'] = int(nummer_match.group(1)) if nummer_match else 0
+                            break
+
+            # Fallback für Seiten/Verlag, falls JSON-LD mal lückenhaft sein sollte
+            for li in soup.find_all('li'):
+                text = li.get_text()
+                if 'Seiten' in text and 'pages' not in data:
+                    seiten_match = re.search(r'(\d+)\s*Seiten', text)
+                    if seiten_match: data['pages'] = int(seiten_match.group(1))
+                elif 'Verlag:' in text and not data.get('publisher'):
+                    data['publisher'] = text.replace('Verlag:', '').strip()
+                elif 'Erschienen:' in text and not data.get('published_date'):
+                    datum_match = re.search(r'\d{2}\.\d{2}\.\d{4}', text)
+                    if datum_match:
+                        tag, monat, jahr = datum_match.group(0).split('.')
+                        data['published_date'] = f"{jahr}-{monat}-{tag}"
+
+            print(f"Scraper-Ergebnis für {isbn_clean}: {data}")
+            return data if data else None
             
         except Exception as e:
-            print(f"Fehler beim Abruf der Autoren-API für {autoren_name}: {e}")
+            print(f"Schwerer Fehler beim Scraping von isbn.de: {e}")
             return None
