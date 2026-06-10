@@ -393,13 +393,12 @@ def hole_autoren_id_durch_name(user_id, autor_name):
             return None
 
 def lade_buecher_von_autor(user_id, autoren_name):
-    """Holt alle Bücher eines spezifischen Autors für den aktuellen User."""
+    """Holt alle Bücher eines spezifischen Autors für den aktuellen User inklusive Erscheinungsdatum."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        # Hier nutzen wir deine bestehende Spaltenstruktur aus lade_buecher_aus_db
-        # b[0]=id, b[1]=title, b[2]=author, b[3]=isbn_13, b[4]=pages, b[5]=status...
+        # Wir fügen b.published_date als 8. Feld (Index 7) hinzu
         cursor.execute("""
-            SELECT b.id, b.title, b.author, b.isbn_13, b.pages, ub.status, ub.rating
+            SELECT b.id, b.title, b.author, b.isbn_13, b.pages, ub.status, ub.rating, b.published_date
             FROM books b
             JOIN user_books ub ON b.id = ub.book_id
             WHERE ub.user_id = ? AND b.author = ?
@@ -587,11 +586,11 @@ def trage_lese_log_ein(user_id, book_id, neue_seite, datum_str=None):
         return True, gelesene_seiten
 
 def hole_kalender_daten_fuer_user(user_id):
-    """Holt alle Tage, an denen der User gelesen hat, inklusive Buch-Details und ID."""
+    """Holt alle Tage, an denen der User gelesen hat, inklusive Buch-Details und IDs."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT rl.log_date, b.title, rl.pages_read, b.id -- <-- HIER b.id ERGÄNZT!
+            SELECT rl.log_date, b.title, rl.pages_read, b.id, rc.id
             FROM reading_logs rl
             JOIN reading_cycles rc ON rl.cycle_id = rc.id
             JOIN books b ON rc.book_id = b.id

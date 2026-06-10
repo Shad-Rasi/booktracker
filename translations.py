@@ -59,6 +59,10 @@ TRANSLATIONS = {
         'location': 'Standort / Regal',
         'format': 'Format',
         'ownership': 'Besitzstatus',
+        'section_personal_info': 'Persönliche Informationen',
+        'section_book_info': 'Buchdetails',
+        'readingstatus': 'Lesestatus',
+        'details': 'Details',
         
         # Format-Optionen
         'PHYSICAL': '📖 Physisches Buch',
@@ -84,6 +88,9 @@ TRANSLATIONS = {
         'pages_200_to_400': '200 - 400 S.',
         'pages_400_to_600': '400 - 600 S.',
         'pages_over_600': '> 600 S.',
+        'chart_type_bar': 'Balken',
+        'chart_type_line': 'Linie',
+        'pages_unknown': 'Unbekannte Länge',
 
         # Regale
         'manage_locations': 'Regale & Standorte verwalten',
@@ -128,6 +135,11 @@ TRANSLATIONS = {
         'error': 'Fehler',
         'unknown_author': 'Unbekannter Autor',
         'pages_short': 'S.',
+        'book_current_cycle': '⚡ Aktueller Durchgang:',
+        'book_started_at': 'Gestartet am',
+        'book_last_read': '✅ Zuletzt gelesen:',
+        'book_from': 'Vom',
+        'book_to': 'Bis',
         
         # --- Sektion: Autoren ---
         'authors_title': 'Autoren',
@@ -226,6 +238,137 @@ TRANSLATIONS = {
         'month_5': 'Mai', 'month_6': 'Juni', 'month_7': 'Juli', 'month_8': 'August',
         'month_9': 'September', 'month_10': 'Oktober', 'month_11': 'November', 'month_12': 'Dezember',
         'day_mo': 'Mo', 'day_di': 'Di', 'day_mi': 'Mi', 'day_do': 'Do', 'day_fr': 'Fr', 'day_sa': 'Sa', 'day_so': 'So',
+        'cal_no_timeline_data_year': 'In diesem Jahr wurden keine aktiven Zeiträume verzeichnet.',
+        'log_deleted': 'Eintrag erfolgreich gelöscht.',
+        'log_delete_error': 'Fehler beim Löschen des Eintrags.',
+        'cal_logs_for': 'Logs für',
+        'no_logs_day': 'Keine Einträge an diesem Tag.',
+
+        # Cover & API-Suche
+    'no_cover': 'Kein Cover',
+    'book_search_cover_internet': 'Cover im Internet suchen',
+    'book_choose_cover_live': 'Wähle ein passendes Cover aus der Live-Suche aus:',
+    'book_notify_saving_cover': 'Speichere ausgewähltes Cover...',
+    'book_notify_cover_updated': 'Cover erfolgreich aktualisiert!',
+    'book_notify_cover_error': 'Fehler beim Download des Covers.',
+    'book_no_images_found': 'Keine passenden Bilder gefunden.',
+    'book_upload_change_cover': 'Cover hochladen / ändern',
+    'book_select_image_label': 'Bild auswählen (JPG/PNG)',
+    'book_notify_save_error': 'Fehler beim Speichern',
+    'book_btn_change_cover': 'Cover ändern',
+    'book_btn_search_online': 'Online suchen',
+    
+    # Header & Metadaten
+    'book_tooltip_author_profile': 'Zum Autorenprofil wechseln',
+    'book_notify_scrape_metadata': 'Scrape fehlende Buchdaten von isbn.de...',
+    'book_notify_metadata_saved': 'Metadaten erfolgreich in DB gespeichert! 🎉',
+    'book_notify_metadata_not_found': 'Keine Daten auf isbn.de gefunden.',
+    'book_tooltip_fetch_metadata': 'Fehlende Metadaten online abrufen & dauerhaft einspeichern',
+    'book_confirm_delete_title': 'Buch unwiderruflich löschen? 🚨',
+    'book_confirm_delete_text_1': 'Möchtest du das Buch',
+    'book_confirm_delete_text_2': 'wirklich aus deiner Bibliothek entfernen? Alle damit verknüpften Lesestände, Statistiken und Kalendereinträge werden permanent gelöscht.',
+    
+    # Fortschritt & Tracking-Zyklen
+    'book_track_progress_title': 'Lese-Fortschritt tracken 📈',
+    'book_current_on_page': 'Aktuell auf Seite',
+    'book_of_pages': 'von',
+    'book_input_new_page': 'Neue Seite',
+    'book_notify_log_saved': 'Eintrag gesichert!',
+    'book_logbook_current_cycle': 'Logbuch dieses Durchgangs:',
+    'book_log_read_short': 'gelesen',
+    'book_notify_log_removed': 'Lese-Eintrag entfernt.',
+    'book_already_read_title': 'Du hast dieses Buch bereits ausgelesen!',
+    'book_already_read_subtitle': 'Möchtest du es noch einmal von vorne lesen und einen neuen Durchgang starten?',
+    'book_notify_reread_started': 'Neuer Lesedurchgang gestartet! Viel Spaß 📖',
+    'book_btn_reread': 'Buch erneut lesen',
+    'book_hint_set_reading': 'Stelle den Status auf "Am Lesen", um deinen Lesefortschritt zu dokumentieren.',
+    'book_past_cycles_title': 'Vergangene Lesedurchgänge',
+    'book_label_cycle': 'Lesedurchgang',
+    'book_until': 'bis',
+    'book_confirm_cycle_delete': 'Diesen Lesedurchgang wirklich löschen? Alle damit verknüpften täglichen Kalendereinträge gehen verloren!',
+    'book_notify_cycle_removed': 'Lesedurchgang inklusive Logs gelöscht.',
+    'readingstatus': 'Lesestatus',
+    'details': 'Details',
+    'book_current_cycle': '⚡ Aktueller Durchgang:',
+    'book_started_at': 'Gestartet am',
+    'book_last_read': '✅ Zuletzt gelesen:',
+    'book_from': 'Vom',
+    'book_to': 'Bis',
+    'book_view_logbook': 'Gesamtes Logbuch einsehen',
+    'book_no_logs_recorded': 'Noch keine Log-Einträge für dieses Buch verzeichnet.',
+    'book_log_until_page': 'Bis S.',
+    'book_status_finished': 'Abgeschlossen',
+    'book_status_active': 'Aktiv',
+    'contributors': 'Beitragende',
+
+    # --- Allgemeine Titel & Sektionen ---
+    'stats_title': 'Statistiken',
+    'stats_subtitle': 'Ein tiefer Einblick in deine Lesegewohnheiten und deine Bibliothek.',
+    'stats_sec_personal': '🧠 Persönliche Statistiken',
+    'stats_sec_general': '📊 Allgemeine Tracker Statistiken',
+    
+    # --- Interaktive Elemente & Modals ---
+    'all_years': 'Alle Jahre (Gesamt)',
+    'chart_type_bar': 'Balken',
+    'chart_type_line': 'Linie',
+    'generating_pdf': 'PDF wird generiert...',
+    
+    # --- KPI Karten ---
+    'stats_total_books': 'Gesamtbestand Bücher',
+    'stats_read_books_year': 'Ausgelesene Bücher',
+    'stats_total_pages_read': 'Gelesene Seiten',
+    
+    # --- Fallbacks & Leermeldungen ---
+    'stats_no_data': 'Keine Statistiken verfügbar. Füge zuerst Bücher zu deiner Bibliothek hinzu.',
+    'stats_no_data_year': 'In diesem Zeitraum wurden noch keine Bücher als "Ausgelesen" markiert.',
+    
+    # --- Diagramm-Titel & Legenden ---
+    'stats_chart_books_development': 'Gelesene Bücher im Verlauf',
+    'stats_chart_monthly_pages': 'Gelesene Seiten im Verlauf',
+    'stats_chart_formats': 'Verteilung der Buch-Formate',
+    'stats_chart_lengths': 'Verteilung der Buchlängen',
+    'stats_chart_status': 'Verteilung des Lesestatus',
+    'stats_chart_ratings': 'Verteilung deiner Sterne-Bewertungen',
+    'format': 'Format',
+    'books': 'Bücher',
+    
+    # --- Buchlängen-Klassen (Dynamisch) ---
+    'pages_under_200': '< 200 Seiten',
+    'pages_200_to_400': '200 - 400 Seiten',
+    'pages_400_to_600': '400 - 600 Seiten',
+    'pages_over_600': '> 600 Seiten',
+    'pages_unknown': 'Unbekannte Länge',
+    
+    # --- Buch-Formate (Aus der DB) ---
+    'PHYSICAL': 'Physisch',
+    'EBOOK': 'E-Book',
+    'AUDIOBOOK': 'Hörbuch',
+    
+    # --- Lesestatus (Aus der DB) ---
+    'unread': 'Ungelesen',
+    'reading': 'Am Lesen',
+    'read': 'Gelesen',
+    
+    # --- Monate (Dynamisch) ---
+    'month_01': 'Januar',
+    'month_02': 'Februar',
+    'month_03': 'März',
+    'month_04': 'April',
+    'month_05': 'Mai',
+    'month_06': 'Juni',
+    'month_07': 'Juli',
+    'month_08': 'August',
+    'month_09': 'September',
+    'month_10': 'Oktober',
+    'month_11': 'November',
+    'month_12': 'Dezember',
+
+    'sort_title': 'Titel (A-Z)',
+    'sort_author': 'Autor (A-Z)',
+    'sort_pages_desc': 'Meiste Seiten',
+    'sort_pages_asc': 'Wenigste Seiten',
+    'sort_rating': 'Beste Bewertung',
+
     },
     'en': {
         'my_shelf': 'Dashboard',
@@ -286,6 +429,10 @@ TRANSLATIONS = {
         'location': 'Location / Shelf',
         'format': 'Format',
         'ownership': 'Ownership Status',
+        'section_personal_info': 'Personal Information',
+        'section_book_info': 'Book Information',
+        'readingstatus': 'Reading State',
+        'details': 'Detailed Information',
         
         # Format-Optionen
         'PHYSICAL': '📖 Physical Book',
@@ -311,6 +458,9 @@ TRANSLATIONS = {
         'pages_200_to_400': '200 - 400 p.',
         'pages_400_to_600': '400 - 600 p.',
         'pages_over_600': '> 600 p.',
+        'chart_type_bar': 'Bar',
+        'chart_type_line': 'Line',
+        'pages_unknown': 'Unknown Length',
 
         # Regale
         'manage_locations': 'Manage Shelves & Locations',
@@ -354,6 +504,11 @@ TRANSLATIONS = {
         'error': 'Error',
         'unknown_author': 'Unknown Author',
         'pages_short': 'p.',
+        'book_current_cycle': '⚡ Current Reading:',
+        'book_started_at': 'Started on',
+        'book_last_read': '✅ Last Read:',
+        'book_from': 'From',
+        'book_to': 'To',
         
         # --- Section: Authors ---
         'authors_title': 'Authors',
@@ -451,6 +606,137 @@ TRANSLATIONS = {
         'month_5': 'May', 'month_6': 'June', 'month_7': 'July', 'month_8': 'August',
         'month_9': 'September', 'month_10': 'October', 'month_11': 'November', 'month_12': 'December',
         'day_mo': 'Mon', 'day_di': 'Tue', 'day_mi': 'Wed', 'day_do': 'Thu', 'day_fr': 'Fri', 'day_sa': 'Sat', 'day_so': 'Sun',
+        'cal_no_timeline_data_year': 'No active reading periods recorded in this year.',
+        'log_deleted': 'Entry successfully deleted.',
+        'log_delete_error': 'Error deleting the entry.',
+        'cal_logs_for': 'Logs for',
+        'no_logs_day': 'No entries for this day.',
+
+        # Cover & API Search
+    'no_cover': 'No Cover',
+    'book_search_cover_internet': 'Search cover online',
+    'book_choose_cover_live': 'Select a matching cover from the live search:',
+    'book_notify_saving_cover': 'Saving selected cover...',
+    'book_notify_cover_updated': 'Cover updated successfully!',
+    'book_notify_cover_error': 'Error downloading the cover.',
+    'book_no_images_found': 'No matching images found.',
+    'book_upload_change_cover': 'Upload / change cover',
+    'book_select_image_label': 'Select image (JPG/PNG)',
+    'book_notify_save_error': 'Error saving',
+    'book_btn_change_cover': 'Change Cover',
+    'book_btn_search_online': 'Search online',
+    
+    # Header & Metadata
+    'book_tooltip_author_profile': 'Go to author profile',
+    'book_notify_scrape_metadata': 'Scraping missing metadata from isbn.de...',
+    'book_notify_metadata_saved': 'Metadata successfully stored in database! 🎉',
+    'book_notify_metadata_not_found': 'No data found on isbn.de.',
+    'book_tooltip_fetch_metadata': 'Fetch missing metadata online & save permanently',
+    'book_confirm_delete_title': 'Permanently delete book? 🚨',
+    'book_confirm_delete_text_1': 'Do you really want to remove',
+    'book_confirm_delete_text_2': 'from your library? All linked reading progress, stats, and calendar entries will be permanently deleted.',
+    
+    # Progress & Cycles
+    'book_track_progress_title': 'Track Reading Progress 📈',
+    'book_current_on_page': 'Currently on page',
+    'book_of_pages': 'of',
+    'book_input_new_page': 'New Page',
+    'book_notify_log_saved': 'Progress saved!',
+    'book_logbook_current_cycle': 'Logbook of this cycle:',
+    'book_log_read_short': 'read',
+    'book_notify_log_removed': 'Reading entry removed.',
+    'book_already_read_title': 'You have already finished this book!',
+    'book_already_read_subtitle': 'Would you like to read it again from the beginning and start a new cycle?',
+    'book_notify_reread_started': 'New reading cycle started! Enjoy 📖',
+    'book_btn_reread': 'Reread book',
+    'book_hint_set_reading': 'Set status to "Reading" to document your progress.',
+    'book_past_cycles_title': 'Past Reading Cycles',
+    'book_label_cycle': 'Reading Cycle',
+    'book_until': 'until',
+    'book_confirm_cycle_delete': 'Really delete this reading cycle? All linked daily calendar entries will be lost!',
+    'book_notify_cycle_removed': 'Reading cycle and logs deleted.',
+    'readingstatus': 'Reading Status',
+    'details': 'Details',
+    'book_current_cycle': '⚡ Current Cycle:',
+    'book_started_at': 'Started on',
+    'book_last_read': '✅ Last Read:',
+    'book_from': 'From',
+    'book_to': 'To',
+    'book_view_logbook': 'View Full Logbook',
+    'book_no_logs_recorded': 'No log entries recorded for this book yet.',
+    'book_log_until_page': 'Up to p.',
+    'book_status_finished': 'Completed',
+    'book_status_active': 'Active',
+    'contributors': 'Contributors',
+
+    # --- Allgemeine Titel & Sektionen ---
+    'stats_title': 'Statistics',
+    'stats_subtitle': 'A deep dive into your reading habits and your library.',
+    'stats_sec_personal': '🧠 Personal Statistics',
+    'stats_sec_general': '📊 General Tracker Statistics',
+    
+    # --- Interaktive Elemente & Modals ---
+    'all_years': 'All Years (Total)',
+    'chart_type_bar': 'Bar',
+    'chart_type_line': 'Line',
+    'generating_pdf': 'Generating PDF...',
+    
+    # --- KPI Karten ---
+    'stats_total_books': 'Total Books',
+    'stats_read_books_year': 'Books Read',
+    'stats_total_pages_read': 'Total Pages Read',
+    
+    # --- Fallbacks & Leermeldungen ---
+    'stats_no_data': 'No statistics available. Please add books to your library first.',
+    'stats_no_data_year': 'No books have been marked as "Read" during this period.',
+    
+    # --- Diagramm-Titel & Legenden ---
+    'stats_chart_books_development': 'Books Read over Time',
+    'stats_chart_monthly_pages': 'Pages Read over Time',
+    'stats_chart_formats': 'Book Format Distribution',
+    'stats_chart_lengths': 'Book Length Distribution',
+    'stats_chart_status': 'Reading Status Distribution',
+    'stats_chart_ratings': 'Star Rating Distribution',
+    'format': 'Format',
+    'books': 'Books',
+    
+    # --- Buchlängen-Klassen (Dynamisch) ---
+    'pages_under_200': '< 200 pages',
+    'pages_200_to_400': '200 - 400 pages',
+    'pages_400_to_600': '400 - 600 pages',
+    'pages_over_600': '> 600 pages',
+    'pages_unknown': 'Unknown Length',
+    
+    # --- Buch-Formate (Aus der DB) ---
+    'PHYSICAL': 'Physical',
+    'EBOOK': 'E-Book',
+    'AUDIOBOOK': 'Audiobook',
+    
+    # --- Lesestatus (Aus der DB) ---
+    'unread': 'Unread',
+    'reading': 'Reading',
+    'read': 'Read',
+    
+    # --- Monate (Dynamisch) ---
+    'month_01': 'January',
+    'month_02': 'February',
+    'month_03': 'March',
+    'month_04': 'April',
+    'month_05': 'May',
+    'month_06': 'June',
+    'month_07': 'July',
+    'month_08': 'August',
+    'month_09': 'September',
+    'month_10': 'October',
+    'month_11': 'November',
+    'month_12': 'December',
+
+    'sort_title': 'Title (A-Z)',
+    'sort_author': 'Author (A-Z)',
+    'sort_pages_desc': 'Most Pages',
+    'sort_pages_asc': 'Fewest Pages',
+    'sort_rating': 'Highest Rating',
+
     }
 }
 

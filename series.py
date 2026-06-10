@@ -7,6 +7,7 @@ from translations import t
 
 @ui.page('/series')
 def reihen_uebersicht():
+    # 1. Darkmode-Zustand für den statischen Teil ermitteln
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']
     
@@ -52,10 +53,10 @@ def reihen_uebersicht():
                 suchfeld = ui.input(
                     placeholder=t('search'), 
                     on_change=lambda: reihen_raster_refresh.refresh()
-                ).classes('flex-1 px-3 text-slate-800 dark:text-slate-100')\
+                ).classes('flex-1 px-3 text-slate-800 dark:text-slate-100') \
                  .props(f'clearable icon=search outlined {"dark" if is_dark else ""}')
 
-        # --- DYNAMISCHER KACHEL-CONTAINER (GRID FIXED) ---
+        # --- DYNAMISCHER KACHEL-CONTAINER ---
         @ui.refreshable
         def reihen_raster_refresh():
             user_ui_fresh = database.lade_user_settings(layout.aktiver_user_id)
@@ -67,7 +68,6 @@ def reihen_uebersicht():
             
             suchbegriff = suchfeld.value.strip().lower() if suchfeld.value else ""
             
-            # REPARIERT: sorted() sortiert die Liste der Tupel jetzt strikt alphabetisch nach dem Namen (x[0])
             gefilterte_reihen = sorted(
                 [(name, data) for name, data in reihen_dict.items() if suchbegriff in name.lower()],
                 key=lambda x: x[0].lower()
@@ -78,7 +78,6 @@ def reihen_uebersicht():
                     ui.label(t('no_search_results'))
                 return
 
-            # REPARIERT: ui.grid() ohne 'columns'-Argument, stattdessen grid-cols-2 direkt in den Klassen!
             with ui.grid().classes('w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6'):
                 for r_name, r_data in gefilterte_reihen:
                     cover_pfad = database.hole_cover_url(r_data['first_book_id'])
@@ -126,8 +125,7 @@ def reihen_detailseite(series_name: str):
                 
         reihen_buecher.sort(key=lambda x: x[10] if x[10] is not None else 999)
 
-        # --- REPARIERTER HEADER: AUTORENLINK STATT BÜCHERANZAHL ---
-        # --- HEADER OPTIMIERT: GRÖSSERER TEXT & COMPACT TOOLTIP ---
+        # --- HEADER ---
         ui.label(series_name).classes(f'text-3xl font-black mb-1 {text_main}')
         
         if reihen_buecher:
@@ -135,7 +133,6 @@ def reihen_detailseite(series_name: str):
             autor_id = database.hole_autoren_id_durch_name(layout.aktiver_user_id, autor_name)
             
             if autor_id:
-                # REPARIERT: text-base macht es größer, w-fit fängt den Tooltip linksbündig ab
                 ui.label(autor_name) \
                     .classes('text-base text-slate-500 dark:text-slate-400 italic mb-6 w-fit cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors') \
                     .on('click', lambda: ui.navigate.to(f'/author/{autor_id}')) \
@@ -143,11 +140,10 @@ def reihen_detailseite(series_name: str):
             else:
                 ui.label(autor_name).classes(f'text-base mb-6 {text_sub} italic w-fit')
         
-        # REPARIERT: Auch hier die Grid-Klassen sauber aufgeteilt
         with ui.grid().classes('w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6'):
             for b in reihen_buecher:
                 b_id, b_title, b_author = b[0], b[1], b[2]
-                b_pages, b_status, b_num = b[4], b[5] or 'UNREAD', b[10]
+                b_pages, b_status, b_rating, b_num = b[4], b[5] or 'UNREAD', b[6], b[10]
                 
                 with ui.card().classes(f'p-2 cursor-pointer hover:shadow-md transition-shadow border {bg_buch_karte}') \
                         .on('click', lambda _, current_book_id=b_id: ui.navigate.to(f'/book/{current_book_id}')):
@@ -165,10 +161,24 @@ def reihen_detailseite(series_name: str):
                                 with ui.element('div').classes('absolute top-1 left-1 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow'):
                                     ui.label(f"#{b_num or '?'}")
                                     
-                            with ui.element('div').classes('px-1 flex flex-col gap-0.5'):
-                                ui.label(b_title).classes(f'font-bold text-xs md:text-sm line-clamp-2 leading-tight {text_main}')
-                                ui.label(f"{b_pages or '?'} {t('pages_short')}").classes(f'text-[10px] {text_sub}')
+                            with ui.column().classes('px-1 gap-0.5 flex-1 justify-between min-h-[90px]'):
+                                # Oberer Block: Nur der Titel
+                                with ui.element('div').classes('w-full'):
+                                    ui.label(b_title).classes(f'font-bold text-xs md:text-sm line-clamp-2 leading-tight {text_main}')
+                                
+                                # Unterer Block: Sterne und Seiten (kleben jetzt immer fest unten auf gleicher Höhe!)
+                                with ui.element('div').classes('w-full flex flex-col gap-0.5 mt-auto'):
+                                    with ui.row().classes('items-center gap-0.5 my-0.5'):
+                                        b_rating_val = b_rating if b_rating is not None else 0
+                                        if b_rating_val > 0:
+                                            for star_idx in range(1, 6):
+                                                star_icon = 'star' if star_idx <= b_rating_val else 'star_border'
+                                                ui.icon(star_icon, size='14px').classes('text-amber-500')
+                                        else:
+                                            ui.label(t('none')).classes('text-[11px] text-slate-400 italic')
+                                    
+                                    ui.label(f"{b_pages or '?'} {t('pages_short')}").classes(f'text-[10px] {text_sub}')
                         
                         with ui.row().classes('w-full mt-2 pt-1 px-1 border-t border-slate-200/10'):
-                            badge_color = 'emerald' if b_status == 'READ' else ('amber' if b_status == 'READING' else 'slate')
+                            badge_color = 'teal' if b_status == 'READ' else ('orange' if b_status == 'READING' else 'slate')
                             ui.badge(t(b_status.lower()), color=badge_color).classes('text-[9px] px-1.5 py-0.5')

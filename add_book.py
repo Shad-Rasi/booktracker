@@ -7,6 +7,7 @@ import layout
 from layout import basis_layout
 import translations
 from translations import t
+from datetime import datetime
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
@@ -34,15 +35,12 @@ def formular_rendern(edit_id=None, daten=None):
     
     # Adaptive CSS-Klassen für Container und Texte
     bg_card = 'bg-slate-800 border-slate-700' if is_dark else 'bg-slate-50 border-slate-200'
-    bg_row_location = 'bg-slate-900 border-amber-900/40' if is_dark else 'bg-amber-50/40 border-amber-100'
-    bg_row_personal = 'bg-slate-900 border-slate-700' if is_dark else 'bg-slate-100 border border-slate-200'
-    bg_row_series = 'bg-slate-900 border-blue-900/40' if is_dark else 'bg-blue-50/40 border-blue-100'
-    bg_row_dates = 'bg-slate-900 border-emerald-900/40' if is_dark else 'bg-emerald-50/40 border-emerald-100'
-    
-    text_main = 'text-slate-100' if is_dark else 'text-slate-700'
+    bg_sub_section = 'bg-slate-900/40 border-slate-700/50' if is_dark else 'bg-white border-slate-200/60'
+    text_main = 'text-slate-100' if is_dark else 'text-slate-800'
+    text_sub = 'text-slate-400' if is_dark else 'text-slate-500'
     text_switch = 'text-slate-200' if is_dark else 'text-slate-700'
     
-    # Datenbankfelder strukturiert entpacken falls vorhanden
+    # Daten entpacken
     db_titel = daten[1] if daten else ""
     db_autor = daten[2] if daten else ""
     db_isbn = daten[3] if daten else ""
@@ -55,7 +53,6 @@ def formular_rendern(edit_id=None, daten=None):
     db_s_num = daten[10] if daten else 0
     db_start = daten[11] if daten else ""
     db_end = daten[12] if daten else ""
-    
     db_subtitle = daten[13] if daten else ""
     db_translator = daten[14] if daten else ""
     db_narrator = daten[15] if daten else ""
@@ -64,13 +61,173 @@ def formular_rendern(edit_id=None, daten=None):
     db_isbn_10 = daten[18] if daten else ""
     db_publisher = daten[19] if daten else ""
     db_published_date = daten[20] if daten else ""
-    db_language = daten[21] if daten else ""
+    db_language = daten[21] if daten else "de"
     db_description = daten[22] if daten else ""
     db_format = daten[23] if daten else "PHYSICAL"
     db_ownership = daten[24] if daten else "OWNED"
     db_quantity = daten[25] if daten else 1
-    db_location_id = daten[26] if daten else (regale[0][0] if regale else None)
+    db_location_id = daten[26] if daten else None
 
+    # Hilfsfunktion für die Datumsformatierung je nach Sprache
+    def formatiere_erscheinungsdatum(datum_str, sprache):
+        if not datum_str:
+            return ""
+        try:
+            dt = datetime.strptime(datum_str[:10], '%Y-%m-%d')
+            if sprache == 'de':
+                return dt.strftime('%d.%m.%Y')
+            return dt.strftime('%Y-%m-%d')
+        except ValueError:
+            return datum_str
+
+    def speichern():
+        title = titel_input.value.strip()
+        if not title:
+            ui.notify(t('title_missing') if 'title_missing' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Titel fehlt!', type='warning')
+            return
+
+        book_data = {
+            'title': title, 'subtitle': subtitle_input.value.strip(), 'author': autor_input.value.strip(),
+            'translator': translator_input.value.strip(), 'narrator': narrator_input.value.strip(),
+            'illustrator': illustrator_input.value.strip(), 'editor': editor_input.value.strip(),
+            'isbn': isbn_input.value.strip().replace("-", ""), 'isbn_10': isbn_10_input.value.strip(),
+            'publisher': publisher_input.value.strip(), 'published_date': pub_date_input.value.strip(),
+            'language': lang_input.value, 'description': desc_input.value.strip(),
+            'pages': int(seiten_input.value or 0), 'special': special_checkbox.value, 'is_series': series_checkbox.value,
+            'series_name': reihenname_input.value.strip() if series_checkbox.value else "",
+            'series_number': int(band_input.value or 0) if series_checkbox.value else 0, 'location_id': location_input.value
+        }
+        
+        user_data = {
+            'status': status_input.value, 'rating': int(rating_input.value), 'format': format_input.value,
+            'ownership': ownership_input.value, 'quantity': int(quantity_input.value or 1),
+            'started_at': start_date_input.value, 'finished_at': end_date_input.value
+        }
+        
+        neue_id = database.speichere_buch_in_db(edit_id, layout.aktiver_user_id, book_data, user_data)
+
+        ui.notify(t('notify_saved'), type='positive')
+        
+        # WEITERLEITUNG NACH SPEICHERN: Zum Buch bei Edit, sonst zum neu angelegten Buch
+        if ist_edit:
+            ui.navigate.to(f'/book/{edit_id}')
+        else:
+            ui.navigate.to(f'/book/{neue_id}')
+
+    titel_key = 'edit_book' if ist_edit else 'add_book'
+    
+    with basis_layout(titel_key):
+        with ui.element('div').classes('w-full max-w-4xl mx-auto mb-12 flex flex-col gap-6'):
+            ui.label(t(titel_key)).classes(f'text-2xl font-bold {text_main}')
+            
+            # =========================================================================
+            # BLOCK 1: HARTE BUCHFAKTEN & INFORMATIONEN (OBEN)
+            # =========================================================================
+            with ui.card().classes(f'w-full p-6 border shadow-xs flex flex-col gap-4 {bg_card}'):
+                ui.label(t('section_book_info')).classes(f'text-sm font-bold uppercase tracking-wider {text_sub} mb-2')
+                
+                # ISBN-Suche
+                with ui.row().classes('w-full items-center gap-4'):
+                    if not ist_edit:
+                        isbn_input = ui.input(label=t('isbn_label'), value=db_isbn).classes('w-64 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                        search_btn = ui.button(t('search')).classes('bg-blue-600 hover:bg-blue-500 text-white px-4 h-[40px] rounded')
+                    else:
+                        isbn_input = ui.input(label='ISBN 13', value=db_isbn).classes('w-64 dark:bg-slate-900').props(f'outlined dense readonly {dark_prop}')
+
+                # Titel & Untertitel
+                with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
+                    titel_input = ui.input(label=t('title'), value=db_titel).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    subtitle_input = ui.input(label=t('subtitle'), value=db_subtitle).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                
+                # Autor & Verlag
+                with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
+                    autor_input = ui.input(label=t('author'), value=db_autor).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    publisher_input = ui.input(label=t('publisher'), value=db_publisher).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+
+                # Kennzahlen (Seiten, ISBN10, Jahr, Sprache)
+                with ui.row().classes('w-full items-center gap-4 mt-1 flex-wrap'):
+                    seiten_input = ui.number(label=t('pages'), value=db_seiten, format='%d').classes('w-24 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    isbn_10_input = ui.input(label='ISBN 10', value=db_isbn_10).classes('w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    pub_date_input = ui.input(label=t('published_date'), value=db_published_date).classes('w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    
+                    sprach_optionen = {
+                        'de': t('lang_de') if 'lang_de' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Deutsch', 
+                        'en': t('lang_en') if 'lang_en' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Englisch', 
+                        'fr': 'Français', 'es': 'Español', 'it': 'Italiano'
+                    }
+                    lang_input = ui.select(options=sprach_optionen, value=db_language, label=t('language')).classes('w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    
+                    special_checkbox = ui.checkbox(t('special'), value=db_special).classes(f'ml-2 {text_switch}')
+
+                # Format, Besitzstatus, Menge & Lagerort
+                with ui.row().classes('w-full items-center gap-4 flex-wrap mt-1'):
+                    format_options = {'PHYSICAL': t('PHYSICAL'), 'AUDIOBOOK': t('AUDIOBOOK'), 'EBOOK': t('EBOOK')}
+                    format_input = ui.select(options=format_options, value=db_format, label=t('format')).classes('w-40 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    
+                    ownership_options = {'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT')}
+                    ownership_input = ui.select(options=ownership_options, value=db_ownership, label=t('ownership')).classes('w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    
+                    quantity_input = ui.number(label=t('quantity'), value=db_quantity, format='%d').classes('w-20 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    
+                    regal_options = {r[0]: r[1] for r in regale}
+                    location_input = ui.select(options=regal_options, value=db_location_id, label=t('location')).classes('w-56 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+
+                # --- COLLAPSIBLE FÜR MITWIRKENDE ---
+                with ui.expansion(t('contributors')).classes(f'w-full border rounded-lg bg-slate-100/50 dark:bg-slate-900/30 dark:border-slate-700/50'):
+                    with ui.column().classes('w-full p-4 gap-4'):
+                        with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
+                            translator_input = ui.input(label=t('translator'), value=db_translator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                            narrator_input = ui.input(label=t('narrator'), value=db_narrator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                        with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
+                            illustrator_input = ui.input(label=t('illustrator'), value=db_illustrator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                            editor_input = ui.input(label=t('editor'), value=db_editor).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+
+                # Buchreihe
+                with ui.row().classes(f'w-full items-center gap-4 mt-1 p-3 rounded-lg border {bg_sub_section}'):
+                    series_checkbox = ui.checkbox(t('series'), value=db_is_series).classes(text_switch)
+                    
+                    existierende_reihen = sorted(list({b[9].strip() for b in database.lade_buecher_aus_db(layout.aktiver_user_id) if b[8] and b[9] and b[9].strip()}))
+                    reihenname_input = ui.select(options=existierende_reihen, value=db_s_name.strip() if db_s_name else None, label=t('series_name')).classes('w-72 dark:bg-slate-900') \
+                        .props(f'outlined dense use-input hide-selected fill-input input-debounce="0" new-value-mode="add" {select_prop}') \
+                        .bind_visibility_from(series_checkbox, 'value')
+                    
+                    def filter_reihen(e):
+                        val = e.value.lower()
+                        reihenname_input.options = [r for r in existierende_reihen if val in r.lower()]
+                    reihenname_input.on('filter', filter_reihen)
+                    band_input = ui.number(label=t('series_num'), value=db_s_num, format='%d').classes('w-24 dark:bg-slate-900').props(f'outlined dense {dark_prop}').bind_visibility_from(series_checkbox, 'value')
+
+                # Beschreibung
+                desc_input = ui.textarea(label=t('description'), value=db_description).classes('w-full dark:bg-slate-900').props(f'outlined rows=4 {dark_prop}')
+            # =========================================================================
+            # BLOCK 2: PERSÖNLICHE NUTZER-STEUERUNG (UNTEN)
+            # =========================================================================
+            with ui.card().classes(f'w-full p-6 border shadow-xs flex flex-col gap-4 {bg_card}'):
+                ui.label(t('section_personal_info')).classes(f'text-sm font-bold uppercase tracking-wider {text_sub} mb-2')
+
+                with ui.row().classes('w-full items-center gap-4 flex-wrap'):
+                    status_options = {'UNREAD': t('unread'), 'READING': t('reading'), 'READ': t('read')}
+                    status_input = ui.select(options=status_options, value=db_status, label=t('status')).classes('w-44 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    
+                    rating_options = {i: (t('none') if i == 0 else f'{i} {t("stars" if i > 1 else "star")}') for i in range(6)}
+                    rating_input = ui.select(options=rating_options, value=db_rating, label=t('rating')).classes('w-40 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    
+                    start_date_input = ui.input(label=t('start'), value=db_start).classes('w-44 dark:bg-slate-900').props(f'type=date outlined dense {dark_prop}')
+                    end_date_input = ui.input(label=t('end'), value=db_end).classes('w-44 dark:bg-slate-900').props(f'type=date outlined dense {dark_prop}')
+
+            # --- FOOTER BUTTONS ---
+            with ui.row().classes('w-full justify-end gap-3 mt-2'):
+                # WEITERLEITUNG BEI ABBRECHEN: Zurück zur Buchseite (Edit) oder zum Dashboard (Neu)
+                abbruch_ziel = f'/book/{edit_id}' if ist_edit else '/'
+                ui.button(t('cancel'), on_click=lambda: ui.navigate.to(abbruch_ziel)).classes('bg-slate-400 hover:bg-slate-500 text-white px-4 py-2 rounded')
+                
+                btn_color = 'bg-orange-600 hover:bg-orange-500' if ist_edit else 'bg-green-600 hover:bg-green-500'
+                btn_text = t('save_changes') if ist_edit else t('save_in_shelf')
+                ui.button(btn_text, on_click=speichern).classes(f'{btn_color} text-white px-6 py-2 rounded shadow')
+
+    # =========================================================================
+    # ORIGINAL-SUCHLOGIK
+    # =========================================================================
     async def isbn_suchen():
         isbn_wert = isbn_input.value.strip().replace("-", "")
         if not isbn_wert:
@@ -83,7 +240,7 @@ def formular_rendern(edit_id=None, daten=None):
         if not scraped_daten:
             scraped_daten = {}
             
-        ui.notify('Prüfe Google Books auf fehlende Details...', type='info')
+        ui.notify('Prüfe Google Books auf missing Details...', type='info')
         google_daten = await book_api.isbn_suche_async(isbn_wert)
         
         vereinte_daten = {}
@@ -106,163 +263,24 @@ def formular_rendern(edit_id=None, daten=None):
             autor_input.value = vereinte_daten.get('author') or "Unbekannter Autor"
             subtitle_input.value = vereinte_daten.get('subtitle', '')
             publisher_input.value = vereinte_daten.get('publisher', '')
-            pub_date_input.value = vereinte_daten.get('published_date', '')
-            lang_input.value = vereinte_daten.get('language', 'de')
             desc_input.value = vereinte_daten.get('description', '')
             seiten_input.value = int(vereinte_daten.get('pages', 0))
+            lang_input.value = vereinte_daten.get('language', 'de')
+            
+            # Datumsformatierung sicher auf das UI anwenden
+            rohes_datum = vereinte_daten.get('published_date', '')
+            pub_date_input.value = formatiere_erscheinungsdatum(rohes_datum, translations.aktuelle_sprache)
             
             if vereinte_daten.get('is_series'):
                 series_checkbox.value = True
                 reihenname_input.value = vereinte_daten.get('series_name', '')
                 band_input.value = vereinte_daten.get('series_number', 0)
             
-            if len(isbn_wert) == 13:
-                formular_rendern.temporaere_cover_url = f"https://buch.isbn.de/gross/{isbn_wert}.jpg"
-            else:
-                formular_rendern.temporaere_cover_url = vereinte_daten.get('cover_url', '')
+            formular_rendern.temporaere_cover_url = f"https://buch.isbn.de/gross/{isbn_wert}.jpg" if len(isbn_wert) == 13 else vereinte_daten.get('cover_url', '')
                 
             ui.notify(t('notify_api_success'), type='positive')
         else:
             ui.notify(t('notify_api_fail'), type='negative')
-            
-    def speichern():
-        title = titel_input.value.strip()
-        if not title:
-            ui.notify(t('title_missing') if 'title_missing' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Titel fehlt!', type='warning')
-            return
 
-        book_data = {
-            'title': title, 'subtitle': subtitle_input.value.strip(), 'author': autor_input.value.strip(),
-            'translator': translator_input.value.strip(), 'narrator': narrator_input.value.strip(),
-            'illustrator': illustrator_input.value.strip(), 'editor': editor_input.value.strip(),
-            'isbn': isbn_input.value.strip().replace("-", ""), 'isbn_10': isbn_10_input.value.strip(),
-            'publisher': publisher_input.value.strip(), 'published_date': pub_date_input.value.strip(),
-            'language': lang_input.value.strip(), 'description': desc_input.value.strip(),
-            'pages': int(seiten_input.value or 0), 'special': special_checkbox.value, 'is_series': series_checkbox.value,
-            'series_name': reihenname_input.value.strip() if series_checkbox.value else "",
-            'series_number': int(band_input.value or 0) if series_checkbox.value else 0, 'location_id': location_input.value
-        }
-        
-        user_data = {
-            'status': status_input.value, 'rating': int(rating_input.value), 'format': format_input.value,
-            'ownership': ownership_input.value, 'quantity': int(quantity_input.value or 1),
-            'started_at': start_date_input.value, 'finished_at': end_date_input.value
-        }
-        
-        neue_id = database.speichere_buch_in_db(edit_id, layout.aktiver_user_id, book_data, user_data)
-        
-        if not ist_edit and neue_id:
-            cover_url = getattr(formular_rendern, 'temporaere_cover_url', None)
-            if cover_url:
-                database.lade_und_speichere_cover(neue_id, cover_url)
-                formular_rendern.temporaere_cover_url = None
-
-        ui.notify(t('notify_saved'), type='positive')
-        ui.navigate.to('/')
-
-    titel_key = 'edit_book' if ist_edit else 'add_book'
-    
-    with basis_layout(titel_key):
-        with ui.element('div').classes('w-full max-w-4xl mx-auto mb-12'):
-            ui.label(t(titel_key)).classes(f'text-2xl font-bold mb-6 {text_main}')
-            
-            with ui.card().classes(f'w-full p-6 border shadow-sm flex flex-col gap-4 {bg_card}'):
-                
-                # --- ISBN & SUCHE ---
-                if not ist_edit:
-                    with ui.row().classes('w-full items-center gap-4'):
-                        isbn_input = ui.input(label=t('isbn_label'), value=db_isbn).classes('w-64 dark:bg-slate-900').props(f'outlined {dark_prop}')
-                        ui.button(t('search'), on_click=isbn_suchen).classes('bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded')
-                    ui.separator().classes('dark:bg-slate-700')
-                else:
-                    isbn_input = ui.input(label='ISBN 13', value=db_isbn).classes('w-64 dark:bg-slate-900').props(f'outlined readonly {dark_prop}')
-
-                # --- TITEL & METADATEN ---
-                with ui.row().classes('w-full gap-4'):
-                    titel_input = ui.input(label=t('title'), value=db_titel).classes('flex-1 dark:bg-slate-900').props(f'outlined {dark_prop}')
-                    subtitle_input = ui.input(label=t('subtitle'), value=db_subtitle).classes('flex-1 dark:bg-slate-900').props(f'outlined {dark_prop}')
-                
-                with ui.row().classes('w-full gap-4'):
-                    autor_input = ui.input(label=t('author'), value=db_autor).classes('flex-1 dark:bg-slate-900').props(f'outlined {dark_prop}')
-                    publisher_input = ui.input(label=t('publisher'), value=db_publisher).classes('flex-1 dark:bg-slate-900').props(f'outlined {dark_prop}')
-
-                # --- ERWEITERTE MITWIRKENDE ---
-                with ui.row().classes('w-full gap-4'):
-                    translator_input = ui.input(label=t('translator'), value=db_translator).classes('flex-1 dark:bg-slate-900').props(f'outlined {dark_prop}')
-                    narrator_input = ui.input(label=t('narrator'), value=db_narrator).classes('flex-1 dark:bg-slate-900').props(f'outlined {dark_prop}')
-                
-                with ui.row().classes('w-full gap-4'):
-                    illustrator_input = ui.input(label=t('illustrator'), value=db_illustrator).classes('flex-1 dark:bg-slate-900').props(f'outlined {dark_prop}')
-                    editor_input = ui.input(label=t('editor'), value=db_editor).classes('flex-1 dark:bg-slate-900').props(f'outlined {dark_prop}')
-
-                # --- BUCHSPEZIFISCHE INFORMATIONEN ---
-                with ui.row().classes('w-full items-center gap-4 mt-2 flex-wrap sm:flex-nowrap'):
-                    seiten_input = ui.number(label=t('pages'), value=db_seiten, format='%d').classes('w-24 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                    isbn_10_input = ui.input(label='ISBN 10', value=db_isbn_10).classes('w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                    pub_date_input = ui.input(label=t('published_date'), value=db_published_date).classes('w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                    lang_input = ui.input(label=t('language'), value=db_language).classes('w-28 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                    special_checkbox = ui.checkbox(t('special'), value=db_special).classes(f'ml-2 {text_switch}')
-
-                # --- PHYSISCHER LAGERORT ---
-                with ui.row().classes(f'w-full items-center gap-6 mt-2 p-3 rounded border {bg_row_location}'):
-                    regal_options = {r[0]: r[1] for r in regale}
-                    location_input = ui.select(options=regal_options, value=db_location_id, label=t('location')).classes('w-64 dark:bg-slate-900 px-2 rounded').props(f'outlined dense {select_prop}')
-
-                # --- PERSÖNLICHE NUTZER-STEUERUNG (STATUS, FORMAT, MENGE) ---
-                with ui.row().classes(f'w-full items-center gap-4 mt-2 p-3 rounded flex-wrap {bg_row_personal}'):
-                    status_options = {'UNREAD': t('unread'), 'READING': t('reading'), 'READ': t('read')}
-                    status_input = ui.select(options=status_options, value=db_status, label=t('status')).classes('w-44 dark:bg-slate-900 px-2 rounded').props(f'outlined dense {select_prop}')
-                    
-                    rating_options = {i: (t('none') if i == 0 else f'{i} {t("stars" if i > 1 else "star")}') for i in range(6)}
-                    rating_input = ui.select(options=rating_options, value=db_rating, label=t('rating')).classes('w-36 dark:bg-slate-900 px-2 rounded').props(f'outlined dense {select_prop}')
-                    
-                    format_options = {'PHYSICAL': t('PHYSICAL'), 'AUDIOBOOK': t('AUDIOBOOK'), 'EBOOK': t('EBOOK')}
-                    format_input = ui.select(options=format_options, value=db_format, label=t('format')).classes('w-44 dark:bg-slate-900 px-2 rounded').props(f'outlined dense {select_prop}')
-                    
-                    ownership_options = {'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT')}
-                    ownership_input = ui.select(options=ownership_options, value=db_ownership, label=t('ownership')).classes('w-36 dark:bg-slate-900 px-2 rounded').props(f'outlined dense {select_prop}')
-                    
-                    quantity_input = ui.number(label=t('quantity'), value=db_quantity, format='%d').classes('w-20 dark:bg-slate-900 px-2 rounded').props(f'outlined dense {dark_prop}')
-
-                # --- REIHEN-DETAILS (JETZT MIT AUTOCOMPLETION-SUCHFUNKTION) ---
-                with ui.row().classes(f'w-full items-center gap-6 mt-2 p-3 rounded border {bg_row_series}'):
-                    series_checkbox = ui.checkbox(t('series'), value=db_is_series).classes(text_switch)
-                    
-                    # 1. Alle aktuell existierenden Reihennamen aus der DB für die Autocomplete-Vorschläge laden
-                    existierende_reihen = sorted(list({
-                        b[9].strip() for b in database.lade_buecher_aus_db(layout.aktiver_user_id) 
-                        if b[8] and b[9] and b[9].strip()
-                    }))
-                    
-                    # 2. Das ui.input wird durch ein ui.select mit Eingabefunktion ersetzt
-                    # new-value-mode="add" erlaubt es dir, völlig neue Reihennamen einzutippen, die noch nicht in der Liste sind!
-                    reihenname_input = ui.select(
-                        options=existierende_reihen,
-                        value=db_s_name.strip() if db_s_name else None,
-                        label=t('series_name')
-                    ).classes('w-80 dark:bg-slate-900 px-2 rounded') \
-                     .props(f'outlined use-input hide-selected fill-input input-debounce="0" new-value-mode="add" {select_prop}') \
-                     .bind_visibility_from(series_checkbox, 'value')
-                    
-                    # Filter-Logik: Filtert die Vorschläge live, während du tippst
-                    def filter_reihen(e):
-                        val = e.value.lower()
-                        reihenname_input.options = [r for r in existierende_reihen if val in r.lower()]
-                    reihenname_input.on('filter', filter_reihen)
-
-                    band_input = ui.number(label=t('series_num'), value=db_s_num, format='%d').classes('w-28 dark:bg-slate-900').props(f'outlined {dark_prop}').bind_visibility_from(series_checkbox, 'value')
-                # --- LESEZEITEN ---
-                with ui.row().classes(f'w-full items-center gap-6 mt-2 p-3 rounded border {bg_row_dates}'):
-                    start_date_input = ui.input(label=t('start'), value=db_start).classes('w-48 dark:bg-slate-900').props(f'type=date outlined {dark_prop}')
-                    end_date_input = ui.input(label=t('end'), value=db_end).classes('w-48 dark:bg-slate-900').props(f'type=date outlined {dark_prop}')
-
-                # --- TEXTBESCHREIBUNG ---
-                desc_input = ui.textarea(label=t('description'), value=db_description).classes('w-full h-24 dark:bg-slate-900').props(f'outlined {dark_prop}')
-
-                # --- FOOTER BUTTONS ---
-                with ui.row().classes('w-full justify-end gap-3 mt-4'):
-                    ui.button(t('cancel'), on_click=lambda: ui.navigate.to('/')).classes('bg-slate-400 hover:bg-slate-500 text-white')
-                    
-                    btn_color = 'bg-orange-600 hover:bg-orange-500' if ist_edit else 'bg-green-600 hover:bg-green-500'
-                    btn_text = t('save_changes') if ist_edit else t('save_in_shelf')
-                    ui.button(btn_text, on_click=speichern).classes(f'{btn_color} text-white px-6 py-2 rounded shadow')
+    if not ist_edit:
+        search_btn.on('click', isbn_suchen)

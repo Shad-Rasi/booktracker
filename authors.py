@@ -5,6 +5,7 @@ from layout import basis_layout
 import translations
 from translations import t
 import book_api
+from datetime import datetime
 
 @ui.page('/authors')
 def autoren_uebersicht():
@@ -30,13 +31,12 @@ def autoren_uebersicht():
                 suchfeld = ui.input(
                     placeholder=t('search'), 
                     on_change=lambda: autoren_raster_refresh.refresh()
-                ).classes('flex-1 px-3 text-slate-800 dark:text-slate-100')\
-                 .props(f'clearable icon=search outlined {"dark" if is_dark else ""}') # <-outlined hinzugefügt, bg-white entfernt!
+                ).classes('flex-1 px-3 text-slate-800 dark:text-slate-100') \
+                 .props(f'clearable icon=search outlined {"dark" if is_dark else ""}')
 
         # --- DYNAMISCHER KACHEL-CONTAINER ---
         @ui.refreshable
         def autoren_raster_refresh():
-            # Zustand frisch in den Refresh-Scope holen
             user_ui_fresh = database.lade_user_settings(layout.aktiver_user_id)
             is_dark_fresh = user_ui_fresh['dark_mode']
             
@@ -85,13 +85,33 @@ def autor_detailseite(author_id: int):
         buecher = database.lade_buecher_von_autor(layout.aktiver_user_id, autor_name_fuer_buecher)
         autoren_isbns = [b[3] for b in buecher if b[3] and str(b[3]).strip()]
 
+        # Hilfsfunktion zur Formatierung der Lebensdaten je nach Sprache
+        def formatiere_lebensdatum(datum_str, sprache):
+            if not datum_str:
+                return ""
+            try:
+                dt = datetime.strptime(datum_str.strip()[:10], '%Y-%m-%d')
+                if sprache == 'de':
+                    return dt.strftime('%d.%m.%Y')
+                return dt.strftime('%Y-%m-%d')
+            except ValueError:
+                return datum_str
+
+        # GEÄNDERT: Sortierung der Bücher nach Erscheinungsdatum (Index 20 in der DB-Struktur)
+        def hole_sortier_datum(b):
+            d_str = b[7]  # Index 7 ist b.published_date
+            if not d_str:
+                return "0000-00-00"
+            return str(d_str).strip()
+            
+        buecher.sort(key=hole_sortier_datum)
+
         @ui.refreshable
         def profil_kopf_refresh():
             user_ui_fresh = database.lade_user_settings(layout.aktiver_user_id)
             is_dark_fresh = user_ui_fresh['dark_mode']
             dark_prop_fresh = 'dark' if is_dark_fresh else ''
             
-            # Farb-Definitionen für das Autoren-Profil
             bg_profile_card = 'bg-slate-800 border-slate-700 text-slate-200' if is_dark_fresh else 'bg-slate-50 border-slate-200 text-slate-700'
             text_name = 'text-slate-100' if is_dark_fresh else 'text-slate-800'
             text_bio = 'text-slate-300' if is_dark_fresh else 'text-slate-600'
@@ -118,9 +138,7 @@ def autor_detailseite(author_id: int):
                         with ui.row().classes('w-full items-center justify-between sm:justify-start gap-2'):
                             ui.label(a_name).classes(f'text-3xl font-black {text_name}')
                             
-                            # BUTTON-BOX FÜR UTILITIES
                             with ui.row().classes('gap-1 items-center'):
-                                # 1. Zauberstab
                                 async def api_abruf_starten():
                                     ui.notify(f'Suche Daten für {a_name} bei isbn.de...', type='info')
                                     api_data = await book_api.hole_autoren_metadaten_async(a_name, isbn_liste=autoren_isbns)
@@ -138,13 +156,10 @@ def autor_detailseite(author_id: int):
                                 ui.button(icon='auto_fix_high', on_click=api_abruf_starten) \
                                     .props('round flat dense').classes('text-blue-500 dark:text-blue-400')
                                 
-                                # 2. Stift (Manuelles Editieren via Dialog)
                                 def manuelles_editieren():
-                                    # REPARIERT: .style(style_modal) zwingt das Bearbeiten-Fenster in den Darkmode
                                     with ui.dialog() as edit_dialog, ui.card().classes('w-full max-w-lg p-6 flex flex-col gap-4').style(style_modal):
                                         ui.label(f'"{a_name}" {t("edit_author_title")}').classes('text-lg font-bold text-slate-700 dark:text-slate-100')
                                         
-                                        # Eingabefelder mit Props ausstatten
                                         birth_input = ui.input(label=t('author_birth'), value=a_birth or '').classes('w-full').props(dark_prop_fresh)
                                         death_input = ui.input(label=t('author_death'), value=a_death or '').classes('w-full').props(dark_prop_fresh)
                                         img_input = ui.input(label=t('author_img_url'), value=a_img or '').classes('w-full').props(dark_prop_fresh)
@@ -171,24 +186,28 @@ def autor_detailseite(author_id: int):
                                 ui.button(icon='edit', on_click=manuelles_editieren) \
                                     .props('round flat dense').classes('text-slate-500 dark:text-slate-400')
                         
-                        if a_birth:
-                            lebensdaten = f"*{a_birth}"
-                            if a_death: lebensdaten += f"  †{a_death}"
+                        # GEÄNDERT: Geburts- und Todesdaten sprachspezifisch formatiert ausgeben
+                        sprache = translations.aktuelle_sprache
+                        f_birth = formatiere_lebensdatum(a_birth, sprache)
+                        f_death = formatiere_lebensdatum(a_death, sprache)
+                        
+                        if f_birth:
+                            lebensdaten = f"*{f_birth}"
+                            if f_death: lebensdaten += f"  †{f_death}"
                             ui.label(lebensdaten).classes('text-xs text-slate-400 dark:text-slate-500 font-mono mt-1')
                             
                         ui.label(a_bio if a_bio else t('no_bio_available')).classes(f'text-sm mt-3 italic max-w-2xl block whitespace-pre-line {text_bio}')
 
         profil_kopf_refresh()
 
-        # --- BÜCHER DIESES AUTORS (BACKGROUND FIXED) ---
+        # --- BÜCHER DIESES AUTORS ---
         ui.label(t('books_by_author')).classes('text-xl font-bold text-slate-700 dark:text-slate-100 mb-4')
         
-        # Dynamischen Hintergrund für die Buchkarten ermitteln
         bg_buch_karte = 'bg-slate-800 border-slate-700' if is_dark else 'bg-white border-slate-100'
         
-        with ui.grid(columns='1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4').classes('gap-4 w-full'):
-            for b_id, b_title, b_author, b_isbn, b_pages, b_status, b_rating in buecher:
-                # REPARIERT: bg_buch_karte zwingt das Quasar-Standardweiß in die Knie
+        # Gridview
+        with ui.grid().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4'):
+            for b_id, b_title, b_author, b_isbn, b_pages, b_status, b_rating, b_pub_date in buecher:
                 with ui.card().classes(f'p-4 cursor-pointer hover:shadow-md transition-shadow border {bg_buch_karte}') \
                         .on('click', lambda _, current_book_id=b_id: ui.navigate.to(f'/book/{current_book_id}')):
                     with ui.row().classes('w-full items-center gap-3 no-wrap'):
@@ -198,9 +217,22 @@ def autor_detailseite(author_id: int):
                                 ui.image(cover_pfad).classes('w-full h-full object-cover')
                             else:
                                 ui.icon('book', size='sm')
-                        with ui.element('div').classes('overflow-hidden flex-1'):
+                        
+                        with ui.column().classes('overflow-hidden flex-1 gap-0.5'):
                             ui.label(b_title).classes('font-bold text-sm text-slate-700 dark:text-slate-100 line-clamp-2 leading-tight')
-                            ui.label(f"{b_pages or '?'} {t('pages_short')}").classes('text-xs text-slate-400 dark:text-slate-500 mt-0.5')
                             
-                            badge_color = 'emerald' if b_status == 'READ' else ('amber' if b_status == 'READING' else 'slate')
-                            ui.badge(t(b_status.lower()), color=badge_color).classes('text-[10px] px-1.5 py-0.5 mt-1')
+                            # Bewertung in Form von Sternen unter dem Titel
+                            with ui.row().classes('items-center gap-0.5 my-0.5'):
+                                b_rating_val = b_rating if b_rating is not None else 0
+                                if b_rating_val > 0:
+                                    for star_idx in range(1, 6):
+                                        star_icon = 'star' if star_idx <= b_rating_val else 'star_border'
+                                        ui.icon(star_icon, size='14px').classes('text-amber-500')
+                                else:
+                                    ui.label(t('none')).classes('text-[11px] text-slate-400 italic')
+
+                            ui.label(f"{b_pages or '?'} {t('pages_short')}").classes('text-xs text-slate-400 dark:text-slate-500')
+                            
+                            # Signalfarben für Lesestatustags
+                            badge_color = 'teal' if b_status == 'READ' else ('orange' if b_status == 'READING' else 'slate')
+                            ui.badge(t(b_status.lower()), color=badge_color).classes('text-[10px] px-1.5 py-0.5 mt-1 align-self-start')

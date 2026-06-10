@@ -9,3 +9,6 @@ pysqlite3-binary; platform_system=="Linux"
 
 # Zur Bildersuche
 beautifulsoup4
+
+# Datenexport als PDF
+playwright

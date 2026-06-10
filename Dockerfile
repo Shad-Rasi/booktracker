@@ -13,6 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 1. Die normalen Python-Pakete installieren (hier wird das Playwright-Python-Paket geladen)
+RUN pip install --no-cache-dir -r requirements.txt
+# 2. WICHTIG: Den Chromium-Druck-Core im Container nachladen
+RUN playwright install chromium
+# 3. WICHTIG: Die Linux-Systembibliotheken für den Browser installieren
+RUN playwright install-deps chromium
+
 # Den restlichen Code der App in den Container kopieren
 COPY . .
 
