@@ -131,7 +131,6 @@ def basis_layout(titel_key: str = None):
             ui.link(translations.t('series'), '/series').classes('text-white hover:text-slate-300 no-underline text-lg')
             ui.link(translations.t('stats'), '/statistics').classes('text-white hover:text-slate-300 no-underline text-lg')
             ui.link(translations.t('calendar'), '/calendar').classes('text-white hover:text-slate-300 no-underline text-lg')
-            ui.link(translations.t('import'), '/import').classes('text-white hover:text-slate-300 no-underline text-lg')
             ui.link(translations.t('settings'), '/settings').classes('text-white hover:text-slate-300 no-underline text-lg')
         
         with ui.row().classes('items-center gap-4'):

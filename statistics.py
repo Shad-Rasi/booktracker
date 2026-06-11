@@ -163,8 +163,10 @@ def statistik_seite():
 
         # 1. Das Modal-Element definieren
         with ui.dialog() as share_modal, ui.card().classes('p-6 w-96'):
-            ui.label('Bericht teilen').classes('text-lg font-bold mb-4')
-            ui.label('Wähle das Jahr für den PDF-Export:').classes('mb-4 text-sm')
+            # ÜBERSETZT: Titel des Modals
+            ui.label(t('share_report_title')).classes('text-lg font-bold mb-4')
+            # ÜBERSETZT: Beschreibungstext
+            ui.label(t('share_report_desc')).classes('mb-4 text-sm')
             
             # Modal-Auswahl
             modal_jahr = ui.select(
@@ -172,13 +174,15 @@ def statistik_seite():
                 value=aktuelles_jahr
             ).classes('w-full mb-4')
 
-            ui.button('PDF erstellen & Download', icon='picture_as_pdf', 
+            # ÜBERSETZT: Export-Button Text
+            ui.button(t('share_report_btn_export'), icon='picture_as_pdf', 
                       on_click=lambda: starte_export(modal_jahr.value)).classes('w-full bg-indigo-600')
-            ui.button('Schließen', on_click=share_modal.close).props('flat')
+            # ÜBERSETZT: Schließen-Button Text
+            ui.button(t('close'), on_click=share_modal.close).props('flat')
 
         # 2. Die Funktion im Hintergrund
         async def starte_export(jahr):
-            ui.notify(t('generating_pdf') if 'generating_pdf' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'PDF wird generiert...', type='info')
+            ui.notify(t('generating_pdf'), type='info')
             share_modal.close()
             try:
                 # Ruft den neuen Service auf
@@ -186,7 +190,8 @@ def statistik_seite():
                 # Triggert den automatischen Browser-Download
                 ui.download(pdf_pfad)
             except Exception as e:
-                ui.notify(f'Fehler beim PDF-Export: {str(e)}', type='negative')
+                # ÜBERSETZT: Fehlermeldung-Präfix
+                ui.notify(f"{t('share_report_error')}: {str(e)}", type='negative')
 
         # =========================================================================
         # SEKTION 1: PERSÖNLICHE STATISTIKEN (Jetzt ganz oben)
@@ -198,24 +203,28 @@ def statistik_seite():
             # Diese Gruppe hält alle Interaktions-Elemente zusammen rechts
             with ui.row().classes('gap-2 items-center'):
                 
-                # Der Teilen-Button (Jetzt ganz rechts in der Zeile)
+                # REPARIERT: Anführungszeichen bei color="primary" gesetzt, um den /dark-Fehler im Log zu eliminieren
                 ui.button(icon='share', on_click=share_modal.open) \
-                    .props('flat round color=primary') \
+                    .props('flat round color="primary"') \
                     .classes('mr-2') \
-                    .tooltip('Bericht teilen / exportieren')
+                    .tooltip(t('export_report'))
 
+                # REPARIERT: bg_selector, manuelle Rahmen-Klassen (border-slate-x) und text-sm gelöscht.
+                # 'outlined dense' regelt das native Text- und Border-Styling über Quasar völlig fehlerfrei!
                 auswahl_chart_typ = ui.select(
                     options={'bar': '📊 ' + t('chart_type_bar'), 'line': '📈 ' + t('chart_type_line')},
                     value='bar',
                     on_change=lambda: personal_stats_container.refresh()
-                ).classes(f'w-40 {bg_selector} px-2 rounded border border-slate-200 dark:border-slate-700 text-sm') \
+                ).classes('w-40 px-1') \
                  .props(f'dense outlined {dark_prop}')
 
+                # REPARIERT: Auch hier alle manuellen Rahmen- und Texterzwingungen entfernt,
+                # damit die Box exakt das identische Erscheinungsbild wie auf der Hauptseite annimmt.
                 auswahl_jahr = ui.select(
                     options={j: (t('all_years') if j == 'ALL' else j) for j in global_stats['jahres_liste']},
                     value=aktuelles_jahr,  
                     on_change=lambda: personal_stats_container.refresh()
-                ).classes(f'w-40 {bg_selector} px-2 rounded border border-slate-200 dark:border-slate-700 text-sm') \
+                ).classes('w-40 px-1') \
                  .props(f'dense outlined {dark_prop}')
 
         @ui.refreshable
@@ -255,13 +264,14 @@ def statistik_seite():
                         buecher_series['itemStyle'] = {'color': '#6366f1'}
                         buecher_series['areaStyle'] = {'color': 'rgba(99, 102, 241, 0.1)'}
 
+                    # REPARIERT: theme=chart_theme entfernt, da NiceGUI hier manchmal Strings fehlinterpretiert
                     ui.echart({
                         'backgroundColor': 'transparent',
                         'xAxis': {'type': 'category', 'data': p_stats['x_achse_keys'], 'axisLabel': {'color': axis_text_color}},
                         'yAxis': {'type': 'value', 'minInterval': 1, 'axisLabel': {'color': axis_text_color}, 'splitLine': {'lineStyle': {'color': grid_line_color}}},
                         'tooltip': {'trigger': 'axis'},
                         'series': [buecher_series]
-                    }, theme=chart_theme).classes('w-full h-64')
+                    }).classes('w-full h-64')
 
                 # Gelesene Seiten im Verlauf
                 with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
@@ -275,13 +285,14 @@ def statistik_seite():
                         seiten_series['itemStyle'] = {'color': '#10b981'}
                         seiten_series['areaStyle'] = {'color': 'rgba(16, 185, 129, 0.1)'}
 
+                    # REPARIERT: Auch hier theme=chart_theme entfernt
                     ui.echart({
                         'backgroundColor': 'transparent',
                         'xAxis': {'type': 'category', 'data': p_stats['x_achse_keys'], 'axisLabel': {'color': axis_text_color}},
                         'yAxis': {'type': 'value', 'axisLabel': {'color': axis_text_color}, 'splitLine': {'lineStyle': {'color': grid_line_color}}},
                         'tooltip': {'trigger': 'axis'},
                         'series': [seiten_series]
-                    }, theme=chart_theme).classes('w-full h-64')
+                    }).classes('w-full h-64')
 
         personal_stats_container()
 
@@ -303,6 +314,8 @@ def statistik_seite():
             # Buchtyp-Kuchendiagramm
             with ui.card().classes(f'p-4 md:col-span-2 h-64 items-center border shadow-sm {bg_card}'):
                 ui.label(t('stats_chart_formats')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
+                
+                # REPARIERT: theme=chart_theme entfernt
                 ui.echart({
                     'tooltip': {'trigger': 'item'},
                     'legend': {'orient': 'vertical', 'left': 'left', 'top': 'center', 'textStyle': {'color': axis_text_color}},
@@ -312,11 +325,13 @@ def statistik_seite():
                         'label': {'show': True, 'formatter': '{d}%', 'textStyle': {'color': axis_text_color}},
                         'data': global_stats['format_data']
                     }]
-                }, theme=chart_theme).classes('w-full h-48')
+                }).classes('w-full h-48')
 
         # Buchlängen-Diagramm (Volle Breite)
         with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm mb-6 {bg_card}'):
             ui.label(t('stats_chart_lengths')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
+            
+            # REPARIERT: theme=chart_theme entfernt
             ui.echart({
                 'backgroundColor': 'transparent',
                 'xAxis': {'type': 'category', 'data': global_stats['seiten_keys'], 'axisLabel': {'color': axis_text_color}},
@@ -326,9 +341,8 @@ def statistik_seite():
                     'data': global_stats['seiten_values'], 'type': 'bar',
                     'itemStyle': {'color': '#3b82f6', 'borderRadius': [4, 4, 0, 0]}
                 }]
-            }, theme=chart_theme).classes('w-full h-64')
+            }).classes('w-full h-64')
 
-        # GEÄNDERT: Optischer Trenner über dem abschließenden globalen Übersichts-Grid
         ui.separator().classes('my-6 dark:bg-slate-700')
 
         # Globales Übersichts-Grid (Status & Sterne) - komplett statisch
@@ -337,6 +351,8 @@ def statistik_seite():
             # Lesestatus (Immer die gesamte Bibliothek)
             with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
                 ui.label(t('stats_chart_status')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
+                
+                # REPARIERT: theme=chart_theme entfernt
                 ui.echart({
                     'tooltip': {'trigger': 'item'},
                     'legend': {'bottom': '0%', 'left': 'center', 'textStyle': {'color': axis_text_color}},
@@ -346,11 +362,13 @@ def statistik_seite():
                         'itemStyle': {'borderRadius': 6, 'borderColor': '#1e293b' if is_dark else '#fff', 'borderWidth': 2},
                         'label': {'show': False}, 'data': global_stats['status_data']
                     }]
-                }, theme=chart_theme).classes('w-full h-64')
+                }).classes('w-full h-64')
 
             # Sterne-Bewertungen (Immer der gesamte Zeitraum)
             with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
                 ui.label(t('stats_chart_ratings')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
+                
+                # REPARIERT: theme=chart_theme entfernt
                 ui.echart({
                     'backgroundColor': 'transparent',
                     'xAxis': {'type': 'category', 'data': global_stats['sterne_keys'], 'axisLabel': {'color': axis_text_color}},
@@ -360,4 +378,4 @@ def statistik_seite():
                         'data': global_stats['sterne_values'], 'type': 'bar',
                         'itemStyle': {'color': '#f59e0b', 'borderRadius': [4, 4, 0, 0]}
                     }]
-                }, theme=chart_theme).classes('w-full h-64')
+                }).classes('w-full h-64')

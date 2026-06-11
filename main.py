@@ -30,7 +30,6 @@ import layout
 from layout import basis_layout 
 import translations
 from translations import t
-import import_export
 import statistics
 import authors
 import reading_calendar
@@ -287,15 +286,18 @@ def hauptseite():
             ui.button(t('add_book'), on_click=lambda: ui.navigate.to('/add')).classes('bg-green-600 text-white')
 
         # --- SUCHLEISTE & EXPANDABLE FILTER ---
+        # --- SUCHLEISTE & EXPANDABLE FILTER ---
         user_ui = database.lade_user_settings(layout.aktiver_user_id)
         is_dark = user_ui['dark_mode']
+
+        # REPARIERT: Keine händischen Tailwind-Hintergründe mehr für Selektoren!
+        # Quasar regelt das über das native 'dark'-Flag komplett identisch zum Input.
         dark_prop = 'dark popup-content-class="dark"' if is_dark else ''
-        bg_selector = 'bg-slate-900 text-slate-100' if is_dark else 'bg-white text-slate-700'
 
         with ui.card().classes('w-full p-4 bg-slate-100 dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 mb-4 flex flex-col gap-3'):
             with ui.row().classes('w-full items-center gap-3 no-wrap'):
                 
-                # GEÄNDERT: value zieht sich den gecachten Text aus REGAL_MEMORY
+                # Suchfeld
                 suchfeld = ui.input(placeholder=t('search'), value=REGAL_MEMORY['search_text'], on_change=lambda: filter_anwenden())\
                     .classes('flex-1 px-1')\
                     .props(f'clearable icon=search outlined {"dark" if is_dark else ""}')
@@ -307,9 +309,11 @@ def hauptseite():
                     'pages_asc': '📄 ' + t('sort_pages_asc'),
                     'rating_desc': '⭐ ' + t('sort_rating')
                 }
-                # GEÄNDERT: value zieht sich den gecachten Zustand
+                
+                # REPARIERT: f-String bg_selector entfernt. Das Feld nutzt jetzt das exakt gleiche 'outlined dense dark' wie das Suchfeld.
+                # 'filled' oder 'outlined' sorgt dafür, dass Quasar die Hintergrund-Inkonsistenz im Light/Darkmode auflöst.
                 sort_filter = ui.select(options=sort_opts, value=REGAL_MEMORY['filter_sort'], on_change=lambda: filter_anwenden())\
-                    .classes(f'w-48 {bg_selector} px-2 rounded')\
+                    .classes('w-48 px-1')\
                     .props(f'outlined dense {dark_prop}')
                 
                 def toggle_filter():
@@ -319,7 +323,6 @@ def hauptseite():
             
             # Ausklappbare Sektion
             with ui.row().classes('w-full gap-4 p-2 bg-slate-50 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700 transition-all flex-wrap sm:flex-nowrap') as filter_sektion:
-                # Zeige die erweiterten Filter automatisch an, wenn einer davon aktiv (nicht 'ALL') ist
                 erweiterte_filter_aktiv = any([
                     REGAL_MEMORY['filter_status'] != 'ALL',
                     REGAL_MEMORY['filter_format'] != 'ALL',
@@ -328,26 +331,27 @@ def hauptseite():
                 ])
                 filter_sektion.visible = erweiterte_filter_aktiv
                 
+                # REPARIERT: Bei allen folgenden Dropdowns ebenfalls den bg_selector und die erzwungene Hintergrundfarbe entfernt!
                 status_opts = {'ALL': '🔍 ' + t('status') + ': ' + t('none'), 'UNREAD': t('unread'), 'READING': t('reading'), 'READ': t('read')}
                 status_filter = ui.select(options=status_opts, value=REGAL_MEMORY['filter_status'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 min-w-[200px] px-2 rounded dark:bg-slate-800')\
+                    .classes('flex-1 min-w-[200px] px-1')\
                     .props(f'outlined dense {dark_prop}')
                 
                 format_opts = {'ALL': '📱 ' + t('format') + ': ' + t('none'), 'PHYSICAL': t('PHYSICAL'), 'AUDIOBOOK': t('AUDIOBOOK'), 'EBOOK': t('EBOOK')}
                 format_filter = ui.select(options=format_opts, value=REGAL_MEMORY['filter_format'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 min-w-[200px] px-2 rounded dark:bg-slate-800')\
+                    .classes('flex-1 min-w-[200px] px-1')\
                     .props(f'outlined dense {dark_prop}')
                 
                 own_opts = {'ALL': '🤝 ' + t('ownership') + ': ' + t('none'), 'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT')}
                 ownership_filter = ui.select(options=own_opts, value=REGAL_MEMORY['filter_ownership'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 min-w-[200px] px-2 rounded dark:bg-slate-800')\
+                    .classes('flex-1 min-w-[200px] px-1')\
                     .props(f'outlined dense {dark_prop}')
                 
                 regale_opts = {'ALL': '📍 ' + t('location') + ': ' + t('none')}
                 for r_id, r_name in regale:
                     regale_opts[r_id] = r_name
                 location_filter = ui.select(options=regale_opts, value=REGAL_MEMORY['filter_location'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 min-w-[200px] px-2 rounded dark:bg-slate-800')\
+                    .classes('flex-1 min-w-[200px] px-1')\
                     .props(f'outlined dense {dark_prop}')
         
         # Kachel-Grid Container initialisieren

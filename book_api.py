@@ -316,11 +316,24 @@ async def scrape_buch_details_isbn_de_async(isbn_wert):
             soup = BeautifulSoup(response.text, 'html.parser')
             data = {}
             
-            # 1. JSON-LD für Basisdaten auslesen (Klappentext, Verlag, Datum, Seiten)
+            # 1. JSON-LD für Basisdaten auslesen (Jetzt MIT Titel und Autor!)
             script_tag = soup.find('script', type='application/ld+json')
             if script_tag:
                 try:
                     json_data = json.loads(script_tag.string)
+                    
+                    # NEU: Titel und Autor direkt aus dem Schema-Strukturen ziehen
+                    data['title'] = json_data.get('name', '')
+                    
+                    autoren_liste = json_data.get('author', [])
+                    if isinstance(autoren_liste, list) and autoren_liste:
+                        # Extrahiert die Namen aller gelisteten Autoren und fügt sie mit Komma zusammen
+                        data['author'] = ", ".join([a.get('name', '') for a in autoren_liste if isinstance(a, dict)])
+                    elif isinstance(autoren_liste, dict):
+                        data['author'] = autoren_liste.get('name', '')
+                    else:
+                        data['author'] = ""
+                        
                     data['description'] = json_data.get('description', '')
                     data['publisher'] = json_data.get('publisher', {}).get('name', '') if isinstance(json_data.get('publisher'), dict) else json_data.get('publisher', '')
                     data['published_date'] = json_data.get('datePublished', '')

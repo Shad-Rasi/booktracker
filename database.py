@@ -133,8 +133,7 @@ def init_db():
         # Standard-User anlegen
         cursor.execute("SELECT COUNT(*) FROM users")
         if cursor.fetchone()[0] == 0:
-            cursor.execute("INSERT INTO users (name) VALUES (?)", ("Robin",))
-            cursor.execute("INSERT INTO users (name) VALUES (?)", ("Stella",))
+            cursor.execute("INSERT INTO users (name) VALUES (?)", ("Shadrasi",))
             
         # Standard-Regale anlegen
         cursor.execute("SELECT COUNT(*) FROM locations")
@@ -152,19 +151,38 @@ def get_user_id_by_name(username):
         cursor.execute("SELECT id FROM users WHERE name = ?", (username,))
         row = cursor.fetchone()
         return row[0] if row else None
-
+        
 def speichere_user_in_db(name):
-    """Fügt einen neuen Benutzer in die Datenbank ein."""
-    if not name:
-        return False
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute("INSERT INTO users (name) VALUES (?)", (name.strip(),))
+    """Legt einen neuen User an und verknüpft ihn automatisch mit allen vorhandenen Büchern."""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # 1. Prüfen, ob der User bereits existiert
+            cursor.execute("SELECT id FROM users WHERE name = ?", (name,))
+            if cursor.fetchone():
+                return False
+                
+            # 2. Den neuen User in die Tabelle schreiben
+            cursor.execute("INSERT INTO users (name) VALUES (?)", (name,))
+            neue_user_id = cursor.lastrowid # Die gerade erzeugte ID abgreifen
+            
+            # 3. AUTOMATISIERUNG: Alle globalen Bücher ermitteln
+            cursor.execute("SELECT id FROM books")
+            alle_buch_ids = [row[0] for row in cursor.fetchall()]
+            
+            # 4. Jedes Buch mit dem Status 'UNREAD' für den neuen User verknüpfen
+            for b_id in alle_buch_ids:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO user_books (user_id, book_id, status) 
+                    VALUES (?, ?, 'UNREAD')
+                """, (neue_user_id, b_id))
+                
             conn.commit()
             return True
-        except sqlite3.IntegrityError:
-            return False # Name existiert schon (UNIQUE)
+    except Exception as e:
+        print(f"Fehler beim Erstellen des Users und Verknüpfen der Bücher: {str(e)}")
+        return False
 
 def loesche_user_aus_db(user_id):
     """Löscht einen Benutzer und kaskadiert alle seine Daten (Logs, Zyklen, Verknüpfungen)."""
@@ -714,19 +732,43 @@ def aktualisiere_buch_metadaten(book_id, metadaten):
         conn.commit()
 
 def lade_user_settings(user_id):
-    """Lädt die UI-Einstellungen eines Nutzers. Erstellt Standardwerte, falls keine existieren."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT view_mode, dark_mode FROM user_settings WHERE user_id = ?", (user_id,))
-        row = cursor.fetchone()
-        
-        if row:
-            return {'view_mode': row[0], 'dark_mode': bool(row[1])}
-        
-        # Standardwerte anlegen, falls noch nichts in der DB steht
-        cursor.execute("INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,))
-        conn.commit()
-        return {'view_mode': 'PAGINATED', 'dark_mode': False}
+    """Lädt die UI-Einstellungen des Benutzers und sichert sie gegen ungültige IDs ab."""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # CRITICAL REPAIR: Prüfen, ob der User überhaupt in der Haupttabelle existiert
+            cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+            user_existiert = cursor.fetchone()
+            
+            # Falls nicht (z.B. nach Löschung oder bei leerem RAM-Startwert 1),
+            # legen wir keine fälschlichen Settings an, sondern fangen das ab.
+            if not user_existiert:
+                # Wir holen uns stattdessen die erste echte ID, die existiert
+                cursor.execute("SELECT id FROM users LIMIT 1")
+                erster_user = cursor.fetchone()
+                if erster_user:
+                    user_id = erster_user[0]
+                else:
+                    # Totale Absicherung: Wenn die DB komplett leer ist, geben wir Standard-Dummy-Settings zurück
+                    return {'dark_mode': False, 'view_mode': 'PAGINATED'}
+
+            # Jetzt erst führen wir das Insert aus – absolut Foreign-Key-sicher!
+            cursor.execute("INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,))
+            conn.commit()
+            
+            # Die eigentlichen Settings auslesen
+            cursor.execute("SELECT dark_mode, view_mode FROM user_settings WHERE user_id = ?", (user_id,))
+            row = cursor.fetchone()
+            
+            # Mapping für die Rückgabe
+            return {
+                'dark_mode': bool(row[0]) if row else False,
+                'view_mode': row[1] if row and row[1] else 'PAGINATED'
+            }
+    except Exception as e:
+        print(f"Fehler in lade_user_settings für User {user_id}: {str(e)}")
+        return {'dark_mode': False, 'view_mode': 'PAGINATED'}
 
 def speichere_user_settings(user_id, view_mode, dark_mode):
     """Speichert die UI-Einstellungen für den jeweiligen Nutzer dauerhaft ab."""
@@ -737,3 +779,26 @@ def speichere_user_settings(user_id, view_mode, dark_mode):
             VALUES (?, ?, ?)
         """, (user_id, view_mode, int(dark_mode)))
         conn.commit()
+
+def datenbank_strukturen_leeren():
+    """Löscht den Inhalt aller Tabellen, falls die Datei zur Laufzeit gesperrt ist."""
+    import sqlite3
+    # Nutzt direkt dein Path-Objekt und macht einen String daraus
+    db_pfad = str(DB_PATH) if 'DB_PATH' in globals() else os.path.join('data', 'db2.db')
+    if not os.path.exists(db_pfad):
+        return
+        
+    conn = sqlite3.connect(db_pfad)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tabellen = cursor.fetchall()
+        for tabelle in tabellen:
+            tabelle_name = tabelle[0]
+            if tabelle_name != 'sqlite_sequence':
+                cursor.execute(f"DROP TABLE IF EXISTS {tabelle_name};")
+        conn.commit()
+    except Exception as e:
+        print(f"Fehler beim SQL-Leeren: {e}")
+    finally:
+        conn.close()

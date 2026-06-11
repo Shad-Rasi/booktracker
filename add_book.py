@@ -1,13 +1,13 @@
+import os
+import asyncio
+from datetime import datetime
 from nicegui import ui
 import database
-import asyncio
 import book_api
-import os
 import layout
-from layout import basis_layout
+from layout import basis_layout 
 import translations
 from translations import t
-from datetime import datetime
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
@@ -19,6 +19,15 @@ def buch_hinzufuegen():
 def buch_bearbeiten(book_id: int):
     all_books = database.lade_buecher_aus_db(layout.aktiver_user_id)
     aktuelles_buch = next((b for b in all_books if b[0] == book_id), None)
+    
+    # Sicherheitsgurt: Falls durch den Hot-Reload der User-Kontext kurz verwirrt ist
+    if not aktuelles_buch:
+        with basis_layout('edit_book'):
+            ui.label('Buch wird geladen...').classes('italic text-slate-400')
+            # Erzwingt den Sprung zur Hauptseite, um das Layout-Gedächtnis zu füttern
+            ui.navigate.to('/') 
+        return
+        
     formular_rendern(edit_id=book_id, daten=aktuelles_buch)
 
 
@@ -33,24 +42,23 @@ def formular_rendern(edit_id=None, daten=None):
     dark_prop = 'dark' if is_dark else ''
     select_prop = 'dark popup-content-class="dark"' if is_dark else ''
     
-    # Adaptive CSS-Klassen für Container und Texte
     bg_card = 'bg-slate-800 border-slate-700' if is_dark else 'bg-slate-50 border-slate-200'
     bg_sub_section = 'bg-slate-900/40 border-slate-700/50' if is_dark else 'bg-white border-slate-200/60'
     text_main = 'text-slate-100' if is_dark else 'text-slate-800'
     text_sub = 'text-slate-400' if is_dark else 'text-slate-500'
     text_switch = 'text-slate-200' if is_dark else 'text-slate-700'
     
-    # Daten entpacken
+    # KORRIGIERT & ABSTURZSICHER: Daten aus dem DB-Tuple entpacken mit festen Fallbacks
     db_titel = daten[1] if daten else ""
     db_autor = daten[2] if daten else ""
     db_isbn = daten[3] if daten else ""
-    db_seiten = daten[4] if daten else 0
-    db_status = daten[5] if daten else "UNREAD"
-    db_rating = daten[6] if daten else 0
+    db_seiten = daten[4] if daten and daten[4] is not None else 0
+    db_status = daten[5] if daten and daten[5] else "UNREAD"
+    db_rating = daten[6] if daten and daten[6] is not None else 0
     db_special = bool(daten[7]) if daten else False
     db_is_series = bool(daten[8]) if daten else False
     db_s_name = daten[9] if daten else ""
-    db_s_num = daten[10] if daten else 0
+    db_s_num = daten[10] if daten and daten[10] is not None else 0
     db_start = daten[11] if daten else ""
     db_end = daten[12] if daten else ""
     db_subtitle = daten[13] if daten else ""
@@ -63,12 +71,13 @@ def formular_rendern(edit_id=None, daten=None):
     db_published_date = daten[20] if daten else ""
     db_language = daten[21] if daten else "de"
     db_description = daten[22] if daten else ""
-    db_format = daten[23] if daten else "PHYSICAL"
-    db_ownership = daten[24] if daten else "OWNED"
-    db_quantity = daten[25] if daten else 1
+    
+    # REPARIERT: Abgleich mit den exakten Indizes aus deiner books.py (23=Format, 24=Ownership, 25=Quantity)
+    db_format = daten[23] if daten and daten[23] else "PHYSICAL"
+    db_ownership = daten[24] if daten and daten[24] else "OWNED"
+    db_quantity = daten[25] if daten and daten[25] is not None else 1
     db_location_id = daten[26] if daten else None
 
-    # Hilfsfunktion für die Datumsformatierung je nach Sprache
     def formatiere_erscheinungsdatum(datum_str, sprache):
         if not datum_str:
             return ""
@@ -81,34 +90,48 @@ def formular_rendern(edit_id=None, daten=None):
             return datum_str
 
     def speichern():
-        title = titel_input.value.strip()
+        title = titel_input.value.strip() if titel_input.value else ""
         if not title:
             ui.notify(t('title_missing') if 'title_missing' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Titel fehlt!', type='warning')
             return
 
         book_data = {
-            'title': title, 'subtitle': subtitle_input.value.strip(), 'author': autor_input.value.strip(),
-            'translator': translator_input.value.strip(), 'narrator': narrator_input.value.strip(),
-            'illustrator': illustrator_input.value.strip(), 'editor': editor_input.value.strip(),
-            'isbn': isbn_input.value.strip().replace("-", ""), 'isbn_10': isbn_10_input.value.strip(),
-            'publisher': publisher_input.value.strip(), 'published_date': pub_date_input.value.strip(),
-            'language': lang_input.value, 'description': desc_input.value.strip(),
-            'pages': int(seiten_input.value or 0), 'special': special_checkbox.value, 'is_series': series_checkbox.value,
-            'series_name': reihenname_input.value.strip() if series_checkbox.value else "",
-            'series_number': int(band_input.value or 0) if series_checkbox.value else 0, 'location_id': location_input.value
+            'title': title, 
+            'subtitle': subtitle_input.value.strip() if subtitle_input.value else "", 
+            'author': autor_input.value.strip() if autor_input.value else "",
+            'translator': translator_input.value.strip() if translator_input.value else "", 
+            'narrator': narrator_input.value.strip() if narrator_input.value else "",
+            'illustrator': illustrator_input.value.strip() if illustrator_input.value else "", 
+            'editor': editor_input.value.strip() if editor_input.value else "",
+            'isbn': isbn_input.value.strip().replace("-", "") if isbn_input.value else "", 
+            'isbn_10': isbn_10_input.value.strip() if isbn_10_input.value else "",
+            'publisher': publisher_input.value.strip() if publisher_input.value else "", 
+            'published_date': pub_date_input.value.strip() if pub_date_input.value else "",
+            'language': lang_input.value, 
+            'description': desc_input.value.strip() if desc_input.value else "",
+            'pages': int(seiten_input.value) if seiten_input.value is not None else 0, 
+            'special': bool(special_checkbox.value), 
+            'is_series': bool(series_checkbox.value),
+            'series_name': reihenname_input.value.strip() if (series_checkbox.value and reihenname_input.value) else "",
+            'series_number': int(band_input.value) if (series_checkbox.value and band_input.value) else 0, 
+            'location_id': location_input.value
         }
         
+        # REPARIERT: Alle int()-Konvertierungen haben jetzt felsenfeste Fallbacks gegen NoneTypes!
         user_data = {
-            'status': status_input.value, 'rating': int(rating_input.value), 'format': format_input.value,
-            'ownership': ownership_input.value, 'quantity': int(quantity_input.value or 1),
-            'started_at': start_date_input.value, 'finished_at': end_date_input.value
+            'status': status_input.value if status_input.value else 'UNREAD', 
+            'rating': int(rating_input.value) if rating_input.value is not None else 0, 
+            'format': format_input.value if format_input.value else 'PHYSICAL',
+            'ownership': ownership_input.value if ownership_input.value else 'OWNED', 
+            'quantity': int(quantity_input.value) if quantity_input.value is not None else 1,
+            'started_at': start_date_input.value if start_date_input.value else "", 
+            'finished_at': end_date_input.value if end_date_input.value else ""
         }
         
         neue_id = database.speichere_buch_in_db(edit_id, layout.aktiver_user_id, book_data, user_data)
 
         ui.notify(t('notify_saved'), type='positive')
         
-        # WEITERLEITUNG NACH SPEICHERN: Zum Buch bei Edit, sonst zum neu angelegten Buch
         if ist_edit:
             ui.navigate.to(f'/book/{edit_id}')
         else:
@@ -169,8 +192,8 @@ def formular_rendern(edit_id=None, daten=None):
                     
                     quantity_input = ui.number(label=t('quantity'), value=db_quantity, format='%d').classes('w-20 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
                     
-                    regal_options = {r[0]: r[1] for r in regale}
-                    location_input = ui.select(options=regal_options, value=db_location_id, label=t('location')).classes('w-56 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    regale_options = {r[0]: r[1] for r in regale}
+                    location_input = ui.select(options=regale_options, value=db_location_id, label=t('location')).classes('w-56 dark:bg-slate-900').props(f'outlined dense {select_prop}')
 
                 # --- COLLAPSIBLE FÜR MITWIRKENDE ---
                 with ui.expansion(t('contributors')).classes(f'w-full border rounded-lg bg-slate-100/50 dark:bg-slate-900/30 dark:border-slate-700/50'):
@@ -192,13 +215,14 @@ def formular_rendern(edit_id=None, daten=None):
                         .bind_visibility_from(series_checkbox, 'value')
                     
                     def filter_reihen(e):
-                        val = e.value.lower()
+                        val = e.value.lower() if e.value else ""
                         reihenname_input.options = [r for r in existierende_reihen if val in r.lower()]
                     reihenname_input.on('filter', filter_reihen)
                     band_input = ui.number(label=t('series_num'), value=db_s_num, format='%d').classes('w-24 dark:bg-slate-900').props(f'outlined dense {dark_prop}').bind_visibility_from(series_checkbox, 'value')
 
                 # Beschreibung
                 desc_input = ui.textarea(label=t('description'), value=db_description).classes('w-full dark:bg-slate-900').props(f'outlined rows=4 {dark_prop}')
+            
             # =========================================================================
             # BLOCK 2: PERSÖNLICHE NUTZER-STEUERUNG (UNTEN)
             # =========================================================================
@@ -217,7 +241,6 @@ def formular_rendern(edit_id=None, daten=None):
 
             # --- FOOTER BUTTONS ---
             with ui.row().classes('w-full justify-end gap-3 mt-2'):
-                # WEITERLEITUNG BEI ABBRECHEN: Zurück zur Buchseite (Edit) oder zum Dashboard (Neu)
                 abbruch_ziel = f'/book/{edit_id}' if ist_edit else '/'
                 ui.button(t('cancel'), on_click=lambda: ui.navigate.to(abbruch_ziel)).classes('bg-slate-400 hover:bg-slate-500 text-white px-4 py-2 rounded')
                 
@@ -225,11 +248,8 @@ def formular_rendern(edit_id=None, daten=None):
                 btn_text = t('save_changes') if ist_edit else t('save_in_shelf')
                 ui.button(btn_text, on_click=speichern).classes(f'{btn_color} text-white px-6 py-2 rounded shadow')
 
-    # =========================================================================
-    # ORIGINAL-SUCHLOGIK
-    # =========================================================================
     async def isbn_suchen():
-        isbn_wert = isbn_input.value.strip().replace("-", "")
+        isbn_wert = isbn_input.value.strip().replace("-", "") if isbn_input.value else ""
         if not isbn_wert:
             ui.notify(t('notify_isbn_warn'), type='warning')
             return
@@ -267,7 +287,6 @@ def formular_rendern(edit_id=None, daten=None):
             seiten_input.value = int(vereinte_daten.get('pages', 0))
             lang_input.value = vereinte_daten.get('language', 'de')
             
-            # Datumsformatierung sicher auf das UI anwenden
             rohes_datum = vereinte_daten.get('published_date', '')
             pub_date_input.value = formatiere_erscheinungsdatum(rohes_datum, translations.aktuelle_sprache)
             

@@ -208,6 +208,18 @@ TRANSLATIONS = {
         'view_infinite': 'Endlos-Scrollen',
         'activate_darkmode': 'Darkmode aktivieren 🌙',
         'notify_saved': 'Design-Einstellungen gespeichert!',
+        'settings_backup_title': 'Datensicherung & System',
+        'settings_backup_subtitle': 'Backup (Datenbank & Medien)',
+        'settings_backup_desc': 'Sichere deine komplette Datenbank sowie alle heruntergeladenen Buchcover und Autorenbilder in einer ZIP-Datei.',
+        'settings_backup_download': 'Backup erstellen (ZIP)',
+        'settings_backup_restore': 'Backup einspielen (.zip)',
+        'settings_reset_title': 'Gefahrenzone',
+        'settings_reset_desc': 'Hiermit werden ALLE Bücher, Autoren, Cover und Einstellungen unwiderruflich gelöscht. Die Anwendung wird auf den Werkszustand zurückgesetzt.',
+        'settings_reset_confirm_title': '🔒 Wirklich alles unwiderruflich löschen?',
+        'settings_reset_confirm_desc': 'Diese Aktion kann nicht rückgängig gemacht werden. Alle Daten gehen verloren, es sei denn, du hast vorher ein Backup heruntergeladen.',
+        'settings_reset_execute': 'Ja, Werksreset durchführen',
+        'settings_reset_btn': 'Anwendung zurücksetzen',
+        'settings_backup_download': 'Backup erstellen',
 
         # --- Sektion: Reihen (Series) ---
         'series_title': 'Buchreihen',
@@ -368,6 +380,15 @@ TRANSLATIONS = {
     'sort_pages_desc': 'Meiste Seiten',
     'sort_pages_asc': 'Wenigste Seiten',
     'sort_rating': 'Beste Bewertung',
+
+    'share_report_title': 'Bericht teilen',
+    'share_report_desc': 'Wähle das Jahr für den PDF-Export:',
+    'share_report_btn_export': 'PDF erstellen & Download',
+    'share_report_error': 'Fehler beim PDF-Export',
+    'generating_pdf': 'PDF wird generiert...', # Falls noch nicht vorhanden
+    'all_years': 'Alle Jahre',                 # Falls noch nicht vorhanden
+    'close': 'Schließen',                       # Falls noch nicht vorhanden
+    'export_report': 'Erstelle Bericht',
 
     },
     'en': {
@@ -737,6 +758,27 @@ TRANSLATIONS = {
     'sort_pages_asc': 'Fewest Pages',
     'sort_rating': 'Highest Rating',
 
+    'settings_backup_title': 'Data Backup & System',
+    'settings_backup_subtitle': 'Backup (Database & Media)',
+    'settings_backup_desc': 'Secure your complete database as well as all downloaded book covers and author images in a single ZIP file.',
+    'settings_backup_download': 'Create Backup (ZIP)',
+    'settings_backup_restore': 'Restore Backup (.zip)',
+    'settings_reset_title': 'Danger Zone',
+    'settings_reset_desc': 'This will irrevocably delete ALL books, authors, covers, and settings. The application will be reset to its factory state.',
+    'settings_reset_confirm_title': '🔒 Really delete everything permanently?',
+    'settings_reset_confirm_desc': 'This action cannot be undone. All data will be lost unless you have downloaded a backup beforehand.',
+    'settings_reset_execute': 'Yes, perform factory reset',
+    'settings_reset_btn': 'Reset Application',
+    'settings_backup_download': 'Create Backup',
+
+    'share_report_title': 'Share Report',
+    'share_report_desc': 'Select the year for the PDF export:',
+    'share_report_btn_export': 'Create PDF & Download',
+    'share_report_error': 'Error during PDF export',
+    'generating_pdf': 'Generating PDF...',
+    'all_years': 'All Years',
+    'close': 'Close',
+    'export_report': 'Create Report',
     }
 }
 
