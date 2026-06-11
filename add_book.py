@@ -35,6 +35,13 @@ def formular_rendern(edit_id=None, daten=None):
     ist_edit = edit_id is not None
     regale = database.lade_alle_regale()
     
+    # NEU: Alle globalen Genres für das Dropdown laden
+    globale_genres = database.lade_alle_genres(layout.aktiver_user_id)
+    genre_liste_auswahl = [g[1] for g in globale_genres]
+    
+    # NEU: Bereits verknüpfte Genres des Buches holen (wenn wir im Edit-Modus sind)
+    bereits_zugeordnete_genres = database.lade_genres_eines_buches(edit_id) if ist_edit else []
+    
     # 1. DARKMODE-ZUSTAND ERMITTLEN & PROPS VORBEREITEN
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']
@@ -48,7 +55,7 @@ def formular_rendern(edit_id=None, daten=None):
     text_sub = 'text-slate-400' if is_dark else 'text-slate-500'
     text_switch = 'text-slate-200' if is_dark else 'text-slate-700'
     
-    # KORRIGIERT & ABSTURZSICHER: Daten aus dem DB-Tuple entpacken mit festen Fallbacks
+    # Daten aus dem DB-Tuple entpacken mit festen Fallbacks
     db_titel = daten[1] if daten else ""
     db_autor = daten[2] if daten else ""
     db_isbn = daten[3] if daten else ""
@@ -72,11 +79,12 @@ def formular_rendern(edit_id=None, daten=None):
     db_language = daten[21] if daten else "de"
     db_description = daten[22] if daten else ""
     
-    # REPARIERT: Abgleich mit den exakten Indizes aus deiner books.py (23=Format, 24=Ownership, 25=Quantity)
     db_format = daten[23] if daten and daten[23] else "PHYSICAL"
     db_ownership = daten[24] if daten and daten[24] else "OWNED"
     db_quantity = daten[25] if daten and daten[25] is not None else 1
     db_location_id = daten[26] if daten else None
+
+    genre_checkboxes = {}
 
     def formatiere_erscheinungsdatum(datum_str, sprache):
         if not datum_str:
@@ -117,7 +125,6 @@ def formular_rendern(edit_id=None, daten=None):
             'location_id': location_input.value
         }
         
-        # REPARIERT: Alle int()-Konvertierungen haben jetzt felsenfeste Fallbacks gegen NoneTypes!
         user_data = {
             'status': status_input.value if status_input.value else 'UNREAD', 
             'rating': int(rating_input.value) if rating_input.value is not None else 0, 
@@ -128,14 +135,16 @@ def formular_rendern(edit_id=None, daten=None):
             'finished_at': end_date_input.value if end_date_input.value else ""
         }
         
-        neue_id = database.speichere_buch_in_db(edit_id, layout.aktiver_user_id, book_data, user_data)
+        # 1. Das Buch in der books/user_books speichern
+        ziel_id = database.speichere_buch_in_db(edit_id, layout.aktiver_user_id, book_data, user_data)
+        
+        # 2. NEU: Die n:m Genres sicher übergeben (Nutzt die ermittelte ID)
+        aktive_book_id = edit_id if ist_edit else ziel_id
+        ausgewaehlte_genres = [name for name, cb in genre_checkboxes.items() if cb.value]
+        database.aktualisiere_buch_genres(aktive_book_id, ausgewaehlte_genres, layout.aktiver_user_id)
 
         ui.notify(t('notify_saved'), type='positive')
-        
-        if ist_edit:
-            ui.navigate.to(f'/book/{edit_id}')
-        else:
-            ui.navigate.to(f'/book/{neue_id}')
+        ui.navigate.to(f'/book/{aktive_book_id}')
 
     titel_key = 'edit_book' if ist_edit else 'add_book'
     
@@ -167,7 +176,7 @@ def formular_rendern(edit_id=None, daten=None):
                     autor_input = ui.input(label=t('author'), value=db_autor).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
                     publisher_input = ui.input(label=t('publisher'), value=db_publisher).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
 
-                # Kennzahlen (Seiten, ISBN10, Jahr, Sprache)
+                # Kennzahlen (Seiten, ISBN10, Jahr, Sprache) + NEU: GENRE SELECTION
                 with ui.row().classes('w-full items-center gap-4 mt-1 flex-wrap'):
                     seiten_input = ui.number(label=t('pages'), value=db_seiten, format='%d').classes('w-24 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
                     isbn_10_input = ui.input(label='ISBN 10', value=db_isbn_10).classes('w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
@@ -179,6 +188,22 @@ def formular_rendern(edit_id=None, daten=None):
                         'fr': 'Français', 'es': 'Español', 'it': 'Italiano'
                     }
                     lang_input = ui.select(options=sprach_optionen, value=db_language, label=t('language')).classes('w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    
+                    # =========================================================================
+                    # REPARIERT: Keine Abstürze mehr – Genres via Grid-Checkboxes (natively safe)
+                    # =========================================================================
+                    with ui.expansion(t('manage_genres'), icon='local_offer').classes('w-full border rounded-lg bg-slate-100/50 dark:bg-slate-900/30 dark:border-slate-700/50'):
+                        with ui.element('div').classes('p-4 w-full'):
+                            # Ein 3-spaltiges Raster für die Checkboxen (wächst dynamisch mit)
+                            with ui.grid().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3') as genre_grid:
+                                genre_checkboxes = {}
+                                for g_name in genre_liste_auswahl:
+                                    # Prüfen, ob das Buch dieses Genre bereits besitzt
+                                    ist_gehakt = g_name in bereits_zugeordnete_genres
+                                    
+                                    # Checkbox generieren und im Dict merken
+                                    cb = ui.checkbox(g_name, value=ist_gehakt).classes('text-sm font-medium')
+                                    genre_checkboxes[g_name] = cb
                     
                     special_checkbox = ui.checkbox(t('special'), value=db_special).classes(f'ml-2 {text_switch}')
 
@@ -196,14 +221,15 @@ def formular_rendern(edit_id=None, daten=None):
                     location_input = ui.select(options=regale_options, value=db_location_id, label=t('location')).classes('w-56 dark:bg-slate-900').props(f'outlined dense {select_prop}')
 
                 # --- COLLAPSIBLE FÜR MITWIRKENDE ---
-                with ui.expansion(t('contributors')).classes(f'w-full border rounded-lg bg-slate-100/50 dark:bg-slate-900/30 dark:border-slate-700/50'):
-                    with ui.column().classes('w-full p-4 gap-4'):
-                        with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
-                            translator_input = ui.input(label=t('translator'), value=db_translator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                            narrator_input = ui.input(label=t('narrator'), value=db_narrator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                        with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
-                            illustrator_input = ui.input(label=t('illustrator'), value=db_illustrator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                            editor_input = ui.input(label=t('editor'), value=db_editor).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                with ui.row().classes('w-full'):
+                    with ui.expansion(t('contributors')).classes(f'w-full border rounded-lg bg-slate-100/50 dark:bg-slate-900/30 dark:border-slate-700/50'):
+                        with ui.column().classes('w-full p-4 gap-4'):
+                            with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
+                                translator_input = ui.input(label=t('translator'), value=db_translator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                                narrator_input = ui.input(label=t('narrator'), value=db_narrator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                            with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
+                                illustrator_input = ui.input(label=t('illustrator'), value=db_illustrator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                                editor_input = ui.input(label=t('editor'), value=db_editor).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
 
                 # Buchreihe
                 with ui.row().classes(f'w-full items-center gap-4 mt-1 p-3 rounded-lg border {bg_sub_section}'):

@@ -47,13 +47,15 @@ def detailseite(b_id: int):
     if author:
         author_id = database.hole_autoren_id_durch_name(layout.aktiver_user_id, author)
 
+
+    buch_genres = database.lade_genres_eines_buches(b_id)
+
     # --- 1. DARKMODE-ZUSTAND FÜR PROPS ERMITTLEN ---
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']
     dark_prop = 'dark popup-content-class="dark"' if is_dark else ''
     dialog_prop = 'dark' if is_dark else ''
 
-    # --- LIVE SPEICHERFUNKTION ---
     # --- LIVE SPEICHERFUNKTION ---
     def inline_speichern(neuer_status=None, neuer_rating_wert=None):
         """Speichert Status und Bewertung live und aktualisiert alle UI-Zonen."""
@@ -360,6 +362,13 @@ def detailseite(b_id: int):
                     if description:
                         with ui.element('div').classes('bg-slate-50/50 dark:bg-slate-800 p-4 rounded-lg border border-slate-100 dark:border-slate-700 italic text-slate-700 dark:text-slate-300 leading-relaxed max-h-60 overflow-y-auto w-full'):
                             ui.markdown(description)
+                        ui.separator().classes('my-2 dark:bg-slate-700')
+
+                if buch_genres:
+                    with ui.row().classes('flex-wrap gap-1.5 mb-4 items-center'):
+                        ui.icon('local_offer', size='xs').classes('text-slate-400 dark:text-slate-500 mr-0.5')
+                        for genre_name in buch_genres:
+                            ui.badge(genre_name, color='slate').classes('text-[10px] font-medium px-2 py-0.5 rounded-md dark:bg-slate-700 dark:text-slate-200')
                         ui.separator().classes('my-2 dark:bg-slate-700')
 
                 # --- METADATEN-BLOCK ---

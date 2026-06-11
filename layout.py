@@ -129,6 +129,7 @@ def basis_layout(titel_key: str = None):
             ui.link(translations.t('my_shelf'), '/').classes('text-white hover:text-slate-300 no-underline text-lg')
             ui.link(translations.t('authors'), '/authors').classes('text-white hover:text-slate-300 no-underline text-lg')
             ui.link(translations.t('series'), '/series').classes('text-white hover:text-slate-300 no-underline text-lg')
+            ui.link(translations.t('genres'), '/genres').classes('text-white hover:text-slate-300 no-underline text-lg')
             ui.link(translations.t('stats'), '/statistics').classes('text-white hover:text-slate-300 no-underline text-lg')
             ui.link(translations.t('calendar'), '/calendar').classes('text-white hover:text-slate-300 no-underline text-lg')
             ui.link(translations.t('settings'), '/settings').classes('text-white hover:text-slate-300 no-underline text-lg')

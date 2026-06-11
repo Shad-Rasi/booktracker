@@ -35,6 +35,7 @@ import authors
 import reading_calendar
 import settings
 import series
+import genres
 
 # Globale Variablen für Filter und Paginierung
 kachel_container = None
@@ -42,7 +43,7 @@ paginierungs_container = None
 alle_buecher_cache = []
 gefilterte_buecher_cache = []
 
-# ERWEITERT: Jetzt mit permanentem Gedächtnis für alle Filter und Suchen!
+# ERWEITERT: Jetzt mit Gedächtnis für das Genre-Filter!
 REGAL_MEMORY = {
     'shelf_page': 1,
     'shelf_scroll': 0,
@@ -51,6 +52,7 @@ REGAL_MEMORY = {
     'filter_format': 'ALL',
     'filter_ownership': 'ALL',
     'filter_location': 'ALL',
+    'filter_genre': 'ALL',  # NEU
     'filter_sort': 'title_asc'
 }
 
@@ -79,7 +81,7 @@ def sortiere_buecher_logik(buecher_liste, kriterium):
 
 
 def formatierte_daten_holen():
-    """Holt die Rohdaten aus der DB und bereitet sie für das UI auf (inkl. Übersetzungen)."""
+    """Holt die Rohdaten aus der DB und bereitet sie für das UI auf (inkl. n:m Genres)."""
     rows = database.lade_buecher_aus_db(layout.aktiver_user_id)
     status_text_mapping = {'READING': t('reading'), 'READ': t('read'), 'UNREAD': t('unread')}
 
@@ -88,6 +90,9 @@ def formatierte_daten_holen():
         b_id = r[0]
         lokaler_pfad = os.path.join(COVER_DIR, f"{b_id}.jpg")
         cover_url = f"/covers/{b_id}.jpg" if os.path.exists(lokaler_pfad) else "/covers/placeholder.jpg"
+
+        # NEU: Holt die n:m Verknüpfungen für den RAM-Filter
+        genres_des_buches = database.lade_genres_eines_buches(b_id)
 
         ergebnis.append({
             'id': b_id,
@@ -107,6 +112,7 @@ def formatierte_daten_holen():
             'ownership': r[24] if r[24] else 'OWNED',
             'location_id': r[26],
             'location_name': r[27] if r[27] else None,
+            'genres': genres_des_buches,  # NEU
             'cover_url': cover_url
         })
     return ergebnis
@@ -116,20 +122,22 @@ def filter_anwenden(behalte_seite=False):
     """Filtert den Cache im Arbeitsspeicher und sichert den Zustand im REGAL_MEMORY."""
     global gefilterte_buecher_cache, aktuelle_seite
     
-    # 1. Aktuelle Werte aus der UI auslesen
+    # Aktuelle Werte aus der UI auslesen
     suchtext = suchfeld.value.lower().strip() if suchfeld.value else ""
     f_status = status_filter.value
     f_format = format_filter.value
     f_ownership = ownership_filter.value
     f_location = location_filter.value
+    f_genre = genre_filter.value  # NEU
     f_sort = sort_filter.value
 
-    # GEÄNDERT: Live-Sicherung des Filterzustands ins App-Gedächtnis
+    # Sicherung des Filterzustands ins App-Gedächtnis
     REGAL_MEMORY['search_text'] = suchfeld.value if suchfeld.value else ""
     REGAL_MEMORY['filter_status'] = f_status
     REGAL_MEMORY['filter_format'] = f_format
     REGAL_MEMORY['filter_ownership'] = f_ownership
     REGAL_MEMORY['filter_location'] = f_location
+    REGAL_MEMORY['filter_genre'] = f_genre  # NEU
     REGAL_MEMORY['filter_sort'] = f_sort
 
     gefiltert = []
@@ -146,6 +154,9 @@ def filter_anwenden(behalte_seite=False):
         if f_ownership != 'ALL' and b['ownership'] != f_ownership:
             continue
         if f_location != 'ALL' and b['location_id'] != f_location:
+            continue
+        # NEU: n:m Match-Prüfung in der String-Liste des Buches
+        if f_genre != 'ALL' and f_genre not in b['genres']:
             continue
         gefiltert.append(b)
 
@@ -195,7 +206,6 @@ def kacheln_rendern():
                 REGAL_MEMORY['shelf_page'] = aktuelle_seite
                 ui.navigate.to(f'/book/{b["id"]}')
 
-            # DYNAMISCHES VISUELLES TUNING FÜR WEGGEGEBENE BÜCHER
             if buch['ownership'] == 'GIVEN_AWAY':
                 card_style = 'border: 1px dashed #ef4444;'
                 cover_classes = 'w-full h-full object-cover opacity-40 grayscale transition-all'
@@ -234,7 +244,6 @@ def kacheln_rendern():
                         if buch['reihen_anzeige']:
                             ui.label(f" {buch['reihen_anzeige']}").classes('text-blue-600 dark:text-blue-400 font-medium line-clamp-1 text-[10px]')
                         
-                        # Kleiner Info-Tag unter dem Titel, falls das Buch permanent weggegeben wurde
                         if buch['ownership'] == 'GIVEN_AWAY':
                             ui.label(t('ownership_given_away')).classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase mt-0.5')
 
@@ -262,7 +271,7 @@ def paginierung_rendern():
         def seite_whitespace(neue_seite):
             global aktuelle_seite
             aktuelle_seite = neue_seite
-            REGAL_MEMORY['shelf_page'] = neue_seite  # Direkt im Speicher sichern
+            REGAL_MEMORY['shelf_page'] = neue_seite
             kacheln_rendern()
             paginierung_rendern()
             ui.run_javascript('window.scrollTo({top: 0, behavior: "smooth"});')
@@ -282,10 +291,13 @@ def paginierung_rendern():
 
 @ui.page('/')
 def hauptseite():
-    global kachel_container, paginierungs_container, alle_buecher_cache, suchfeld, status_filter, format_filter, ownership_filter, location_filter, sort_filter, aktuelle_seite
+    global kachel_container, paginierungs_container, alle_buecher_cache, suchfeld, status_filter, format_filter, ownership_filter, location_filter, genre_filter, sort_filter, aktuelle_seite
     
     alle_buecher_cache = formatierte_daten_holen()
     regale = database.lade_alle_regale()
+    
+    # NEU: Alle globalen Genres für die Filteroptionen laden
+    globale_genres = database.lade_alle_genres(layout.aktiver_user_id)
 
     # Seitenzahl aus dem persistenten RAM-Gedächtnis laden
     aktuelle_seite = REGAL_MEMORY['shelf_page']
@@ -303,61 +315,120 @@ def hauptseite():
         dark_prop = 'dark popup-content-class="dark"' if is_dark else ''
 
         with ui.card().classes('w-full p-4 bg-slate-100 dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 mb-4 flex flex-col gap-3'):
-            with ui.row().classes('w-full items-center gap-3 no-wrap'):
-                
-                # Suchfeld
-                suchfeld = ui.input(placeholder=t('search'), value=REGAL_MEMORY['search_text'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 px-1')\
-                    .props(f'clearable icon=search outlined {"dark" if is_dark else ""}')
-                
-                sort_opts = {
-                    'title_asc': '🔤 ' + t('sort_title'),
-                    'author_asc': '✍️ ' + t('sort_author'),
-                    'pages_desc': '📄 ' + t('sort_pages_desc'),
-                    'pages_asc': '📄 ' + t('sort_pages_asc'),
-                    'rating_desc': '⭐ ' + t('sort_rating')
-                }
-                
-                sort_filter = ui.select(options=sort_opts, value=REGAL_MEMORY['filter_sort'], on_change=lambda: filter_anwenden())\
-                    .classes('w-48 px-1')\
-                    .props(f'outlined dense {dark_prop}')
-                
-                def toggle_filter():
-                    filter_sektion.visible = not filter_sektion.visible
+            
+            filter_sektion = None
 
-                ui.button(icon='tune', color='slate', on_click=toggle_filter).classes('bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200')
+            # REFRESHABLE FILTER-ZEILE
+            @ui.refreshable
+            def filter_kontroll_zeile_rendern():
+                filter_aktiv = any([
+                    REGAL_MEMORY['search_text'] != '',
+                    REGAL_MEMORY['filter_status'] != 'ALL',
+                    REGAL_MEMORY['filter_format'] != 'ALL',
+                    REGAL_MEMORY['filter_ownership'] != 'ALL',
+                    REGAL_MEMORY['filter_location'] != 'ALL',
+                    REGAL_MEMORY['filter_genre'] != 'ALL'
+                ])
+                
+                with ui.row().classes('w-full items-center gap-3 no-wrap'):
+                    global suchfeld, sort_filter
+                    
+                    suchfeld = ui.input(placeholder=t('search'), value=REGAL_MEMORY['search_text'], 
+                                        on_change=lambda e: [filter_anwenden(), filter_kontroll_zeile_rendern.refresh()])\
+                        .classes('flex-1 px-1')\
+                        .props(f'clearable icon=search outlined {"dark" if is_dark else ""}')
+                    
+                    sort_opts = {
+                        'title_asc': '🔤 ' + t('sort_title'),
+                        'author_asc': '✍️ ' + t('sort_author'),
+                        'pages_desc': '📄 ' + t('sort_pages_desc'),
+                        'pages_asc': '📄 ' + t('sort_pages_asc'),
+                        'rating_desc': '⭐ ' + t('sort_rating')
+                    }
+                    
+                    sort_filter = ui.select(options=sort_opts, value=REGAL_MEMORY['filter_sort'], on_change=lambda: filter_anwenden())\
+                        .classes('w-48 px-1')\
+                        .props(f'outlined dense {dark_prop}')
+                    
+                    # REPARIERT: Funktion heißt jetzt einheitlich 'hauptseite_filter_dropdowns_synchronisieren'
+                    if filter_aktiv:
+                        def alle_filter_zuruecksetzen():
+                            REGAL_MEMORY['search_text'] = ''
+                            REGAL_MEMORY['filter_status'] = 'ALL'
+                            REGAL_MEMORY['filter_format'] = 'ALL'
+                            REGAL_MEMORY['filter_ownership'] = 'ALL'
+                            REGAL_MEMORY['filter_location'] = 'ALL'
+                            REGAL_MEMORY['filter_genre'] = 'ALL'
+                            filter_anwenden()
+                            hauptseite_filter_dropdowns_synchronisieren()
+                            filter_kontroll_zeile_rendern.refresh()
+
+                        ui.button(icon='filter_alt_off', on_click=alle_filter_zuruecksetzen)\
+                            .props('flat round color="negative"')\
+                            .tooltip(t('clear_filters') if 'clear_filters' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Alle Filter zurücksetzen')
+                    
+                    def toggle_filter():
+                        if filter_sektion:
+                            filter_sektion.visible = not filter_sektion.visible
+
+                    ui.button(icon='tune', color='slate', on_click=toggle_filter).classes('bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200')
+
+            # REPARIERT: Name matched jetzt exakt mit dem Button-Aufruf weiter oben
+            def hauptseite_filter_dropdowns_synchronisieren():
+                status_filter.value = 'ALL'
+                format_filter.value = 'ALL'
+                ownership_filter.value = 'ALL'
+                location_filter.value = 'ALL'
+                genre_filter.value = 'ALL'
+                suchfeld.value = ''
+
+            filter_kontroll_zeile_rendern()
             
             # Ausklappbare Sektion
-            with ui.row().classes('w-full gap-4 p-2 bg-slate-50 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700 transition-all flex-wrap sm:flex-nowrap') as filter_sektion:
+            with ui.row().classes('w-full gap-4 p-2 bg-slate-50 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700 transition-all flex-wrap') as filter_sektion:
                 erweiterte_filter_aktiv = any([
                     REGAL_MEMORY['filter_status'] != 'ALL',
                     REGAL_MEMORY['filter_format'] != 'ALL',
                     REGAL_MEMORY['filter_ownership'] != 'ALL',
-                    REGAL_MEMORY['filter_location'] != 'ALL'
+                    REGAL_MEMORY['filter_location'] != 'ALL',
+                    REGAL_MEMORY['filter_genre'] != 'ALL'
                 ])
                 filter_sektion.visible = erweiterte_filter_aktiv
                 
                 status_opts = {'ALL': '🔍 ' + t('status') + ': ' + t('none'), 'UNREAD': t('unread'), 'READING': t('reading'), 'READ': t('read')}
-                status_filter = ui.select(options=status_opts, value=REGAL_MEMORY['filter_status'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 min-w-[200px] px-1')\
+                status_filter = ui.select(options=status_opts, value=REGAL_MEMORY['filter_status'], 
+                                          on_change=lambda: [filter_anwenden(), filter_kontroll_zeile_rendern.refresh()])\
+                    .classes('flex-1 min-w-[180px] px-1')\
                     .props(f'outlined dense {dark_prop}')
                 
                 format_opts = {'ALL': '📱 ' + t('format') + ': ' + t('none'), 'PHYSICAL': t('PHYSICAL'), 'AUDIOBOOK': t('AUDIOBOOK'), 'EBOOK': t('EBOOK')}
-                format_filter = ui.select(options=format_opts, value=REGAL_MEMORY['filter_format'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 min-w-[200px] px-1')\
+                format_filter = ui.select(options=format_opts, value=REGAL_MEMORY['filter_format'], 
+                                          on_change=lambda: [filter_anwenden(), filter_kontroll_zeile_rendern.refresh()])\
+                    .classes('flex-1 min-w-[180px] px-1')\
                     .props(f'outlined dense {dark_prop}')
                 
                 own_opts = {'ALL': '🤝 ' + t('ownership') + ': ' + t('none'), 'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT'), 'GIVEN_AWAY': t('ownership_given_away')}
-                ownership_filter = ui.select(options=own_opts, value=REGAL_MEMORY['filter_ownership'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 min-w-[200px] px-1')\
+                ownership_filter = ui.select(options=own_opts, value=REGAL_MEMORY['filter_ownership'], 
+                                             on_change=lambda: [filter_anwenden(), filter_kontroll_zeile_rendern.refresh()])\
+                    .classes('flex-1 min-w-[180px] px-1')\
                     .props(f'outlined dense {dark_prop}')
                 
                 regale_opts = {'ALL': '📍 ' + t('location') + ': ' + t('none')}
                 for r_id, r_name in regale:
                     regale_opts[r_id] = r_name
-                location_filter = ui.select(options=regale_opts, value=REGAL_MEMORY['filter_location'], on_change=lambda: filter_anwenden())\
-                    .classes('flex-1 min-w-[200px] px-1')\
+                location_filter = ui.select(options=regale_opts, value=REGAL_MEMORY['filter_location'], 
+                                            on_change=lambda: [filter_anwenden(), filter_kontroll_zeile_rendern.refresh()])\
+                    .classes('flex-1 min-w-[180px] px-1')\
                     .props(f'outlined dense {dark_prop}')
+
+                genre_opts = {'ALL': '🏷️ ' + t('manage_genres') + ': ' + t('none')}
+                for g_id, g_name in globale_genres:
+                    genre_opts[g_name] = g_name
+                
+                genre_filter = ui.select(options=genre_opts, value=REGAL_MEMORY['filter_genre'], 
+                                           on_change=lambda: [filter_anwenden(), filter_kontroll_zeile_rendern.refresh()])\
+                    .classes('flex-1 min-w-[180px] px-1')\
+                    .props(f'outlined dense with-input {dark_prop}')
         
         # Kachel-Grid Container initialisieren
         kachel_container = ui.row().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6')

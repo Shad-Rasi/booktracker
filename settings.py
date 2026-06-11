@@ -143,7 +143,7 @@ async def handle_upload(e, status_container, upload_element, is_dark):
         if 'ISBN13' in content or 'Title' in content:
             reader = csv.DictReader(io.StringIO(content))
             for row in reader:
-                title, author, isbn13, shelf, rating = row.get('Title'), row.get('Author'), isbn_bereinigen(row.get('ISBN13')), row.get('Exclusive Shelf'), row.get('My Rating')
+                title, author, isbn13, shelf, rating = row.get('Title'), row.get('Author'), isbn_bearbeiten(row.get('ISBN13')), row.get('Exclusive Shelf'), row.get('My Rating')
                 if not title and not isbn13: continue
                 buecher_liste.append({
                     'title': title if title else f"ISBN: {isbn13}", 'author': author if author else t('unknown_author'),
@@ -158,7 +158,8 @@ async def handle_upload(e, status_container, upload_element, is_dark):
             ui.notify(t('import_error_no_data'), type='warning')
             return
             
-        ui.notify(f"{t('import_notify_loaded', f'{len(buecher_liste)} Bücher geladen')}", type='info')
+        # REPARIERT: t() kriegt nur noch einen Key, die Anzahl hängen wir per f-String dahinter!
+        ui.notify(f"{len(buecher_liste)} {t('import_notify_loaded')}", type='info')
         upload_element.set_visibility(False)
         
         with status_container:
@@ -176,6 +177,7 @@ async def handle_upload(e, status_container, upload_element, is_dark):
         asyncio.create_task(import_queue_verarbeiten(buecher_liste, lbl, progress, log_box, context.client))
     except Exception as ex:
         ui.notify(f"{t('import_error_read')}: {str(ex)}", type='negative')
+
 
 def exportiere_buecher():
     try:
@@ -471,9 +473,60 @@ def einstellungen_seite():
                 regal_liste_refresh()
 
             # ==========================================
+            # SEKTION 3b: GENRE-VERWALTUNG (NEU)
+            # ==========================================
+            with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
+                ui.label(t('manage_genres')).classes(f'text-lg font-bold {text_main} mb-2')
+                
+                with ui.row().classes('w-full items-center gap-3 no-wrap mb-4'):
+                    neues_genre_input = ui.input(label=t('genre_name')).classes('flex-1 px-1').props(f'outlined dense {dark_prop}')
+                    async def genre_speichern():
+                        name = neues_genre_input.value.strip()
+                        if not name:
+                            ui.notify(t('error_empty_name'), type='warning')
+                            return
+                        if database.speichere_genre_in_db(layout.aktiver_user_id, name):
+                            ui.notify(f'"{name}" {t("notify_genre_added")}', type='positive')
+                            neues_genre_input.value = ''
+                            genre_liste_refresh.refresh()
+                        else:
+                            ui.notify(t('error_genre_exists'), type='negative')
+                    ui.button(icon='add', on_click=genre_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
+
+                ui.separator().classes('my-4 dark:bg-slate-700')
+                ui.label(t('existing_genres')).classes(f'text-sm font-bold mb-2 {text_sub}')
+                
+                @ui.refreshable
+                def genre_liste_refresh():
+                    genres = database.lade_alle_genres(layout.aktiver_user_id)
+                    with ui.element('div').classes('flex flex-wrap gap-2'):
+                        if not genres:
+                            ui.label(t('no_genres_hint')).classes('text-xs italic text-slate-400')
+                        for g_id, g_name in genres:
+                            with ui.element('div').classes(f'flex items-center rounded-full pl-3 pr-1 py-1 gap-2 shadow-sm {bg_pill}'):
+                                ui.label(g_name).classes('text-sm font-medium')
+                                async def genre_loeschen_klick(id_zu_loeschen=g_id, name_zu_loeschen=g_name):
+                                    with ui.dialog() as dialog, ui.card().classes('p-4 w-full max-w-sm flex flex-col gap-4').style(style_modal):
+                                        ui.label(f'"{name_zu_loeschen}" {t("confirm_delete_genre_text")}').classes('text-sm mb-4')
+                                        with ui.row().classes('w-full justify-end gap-2'):
+                                            ui.button(t('cancel'), on_click=dialog.close).classes('text-slate-500').props('flat')
+                                            async def definitiv_loeschen():
+                                                if database.loesche_genre_aus_db(id_zu_loeschen):
+                                                    ui.notify(f'"{name_zu_loeschen}" {t("notify_genre_deleted")}', type='info')
+                                                    genre_liste_refresh.refresh()
+                                                dialog.close()
+                                            ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
+                                    dialog.open()
+                                ui.button(icon='close', on_click=genre_loeschen_klick).props('round dense flat size=sm').classes('text-red-500 hover:bg-red-900/30')
+                genre_liste_refresh()
+
+
+            # ==========================================
             # SEKTION 4: DATEI-IMPORT
             # ==========================================
             # REPARIERT: min-h-[250px] und flex-col justify-between für identische Höhe zu Sektion 5
+            ui.label(t('settings_importexport_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide mt-4 -mb-2')
+
             with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
                 with ui.element('div'):
                     ui.label(t('import_file_title')).classes(f'text-lg font-bold {text_main}')

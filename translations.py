@@ -221,6 +221,7 @@ TRANSLATIONS = {
         'settings_reset_execute': 'Ja, Werksreset durchführen',
         'settings_reset_btn': 'Anwendung zurücksetzen',
         'settings_backup_download': 'Backup erstellen',
+        'settings_importexport_title': 'Import/Export Bücher',
 
         # --- Sektion: Reihen (Series) ---
         'series_title': 'Buchreihen',
@@ -395,6 +396,21 @@ TRANSLATIONS = {
     'ownership_lent': 'Verliehen',
     'ownership_given_away': 'Weggegeben',
     'given_away': 'Weggegeben',
+
+    'manage_genres': 'Genres verwalten',
+    'genre_name': 'Neues Genre',
+    'existing_genres': 'Eingerichtete Genres',
+    'no_genres_hint': 'Noch keine Genres angelegt.',
+    'notify_genre_added': 'als Genre hinzugefügt',
+    'error_genre_exists': 'Dieses Genre existiert bereits!',
+    'confirm_delete_genre_text': 'wirklich löschen? Zugeordnete Bücher werden auf "Kein Genre" zurückgesetzt.',
+    'notify_genre_deleted': 'Genre gelöscht',
+
+    'import_notify_loaded': 'Bücher erfolgreich geladen.',
+    'notify_user_deleted': 'Nutzer gelöscht',
+    'lang_de': 'Deutsch',
+    'lang_en': 'Englisch',
+    'genres': 'Genre',
 
     },
     'en': {
@@ -603,6 +619,7 @@ TRANSLATIONS = {
         'view_infinite': 'Infinite Scrolling',
         'activate_darkmode': 'Activate Darkmode 🌙',
         'notify_saved': 'Design settings saved!',
+        'settings_importexport_title': 'Import/Export Books',
 
         # --- Section: Series ---
         'series_title': 'Book Series',
@@ -790,6 +807,21 @@ TRANSLATIONS = {
     'ownership_lent': 'Lent',
     'ownership_given_away': 'Given Away',
     'GIVEN_AWAY': 'Given Away',
+
+    'manage_genres': 'Manage Genres',
+    'genre_name': 'New Genre',
+    'existing_genres': 'Configured Genres',
+    'no_genres_hint': 'No genres created yet.',
+    'notify_genre_added': 'added as genre',
+    'error_genre_exists': 'This genre already exists!',
+    'confirm_delete_genre_text': 'really delete? Linked books will be reset to "No Genre".',
+    'notify_genre_deleted': 'Genre deleted',
+
+    'import_notify_loaded': 'books successfully loaded.',
+    'notify_user_deleted': 'User deleted',
+    'lang_de': 'German',
+    'lang_en': 'English',
+    'genres': 'Genre',
     }
 }
 

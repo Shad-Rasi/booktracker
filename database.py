@@ -35,6 +35,16 @@ def init_db():
             );
         """)
         
+        # Genre
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS genres (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                UNIQUE(user_id, name)
+            )
+        """)
+
         # 3. TABELLE: Globale Buchdaten (Erweitert um all deine neuen Wunschfelder!)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS books (
@@ -60,6 +70,16 @@ def init_db():
                 location_id INTEGER,
                 FOREIGN KEY (location_id) REFERENCES locations(id) -- ON SET NULL entfernt
             );
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS book_genres (
+                book_id INTEGER NOT NULL,
+                genre_id INTEGER NOT NULL,
+                PRIMARY KEY (book_id, genre_id),
+                FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+                FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
+            )
         """)
         
         # 4. TABELLE: Benutzer-Buch-Verknüpfung (Format, Besitzstatus, Menge)
@@ -802,3 +822,75 @@ def datenbank_strukturen_leeren():
         print(f"Fehler beim SQL-Leeren: {e}")
     finally:
         conn.close()
+
+def lade_alle_genres(user_id):
+    """Holt alle für den User definierten Genres sortiert aus der DB (für Einstellungen & Dropdowns)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, name FROM genres WHERE user_id = ? ORDER BY name ASC", (user_id,))
+        return cursor.fetchall()
+
+
+def speichere_genre_in_db(user_id, name):
+    """Speichert ein neues Genre global in der Liste, wenn es nicht doppelt ist."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO genres (user_id, name) VALUES (?, ?)", (user_id, name))
+            conn.commit()
+            return True
+        except:
+            return False  # Doppelter Eintrag (Unique-Constraint) abgefangen
+
+
+def loesche_genre_aus_db(genre_id):
+    """Löscht ein Genre vollständig aus der globalen Liste. 
+    
+    Durch ON DELETE CASCADE in der Koppeltabelle 'book_genres' werden alle 
+    Verbindungen zu den Büchern automatisch und sauber von SQLite mitgelöscht.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM genres WHERE id = ?", (genre_id,))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Fehler beim Löschen des Genres: {e}")
+            return False
+
+def lade_genres_eines_buches(book_id):
+    """Holt alle zugeordneten Genres für ein bestimmtes Buch (gibt eine Liste von Strings zurück)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT g.name 
+            FROM genres g
+            JOIN book_genres bg ON g.id = bg.genre_id
+            WHERE bg.book_id = ?
+            ORDER BY g.name ASC
+        """, (book_id,))
+        return [row[0] for row in cursor.fetchall()]
+
+
+def aktualisiere_buch_genres(book_id, genre_namen_liste, user_id):
+    """Löscht alle alten Zuordnungen des Buches und setzt die neuen Genres aus der Auswahl."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            # 1. Alle alten Verbindungen für dieses Buch kappen
+            cursor.execute("DELETE FROM book_genres WHERE book_id = ?", (book_id,))
+            
+            # 2. Die IDs der ausgewählten Genres holen und neu verknüpfen
+            for g_name in genre_namen_liste:
+                cursor.execute("SELECT id FROM genres WHERE user_id = ? AND name = ?", (user_id, g_name))
+                row = cursor.fetchone()
+                if row:
+                    genre_id = row[0]
+                    cursor.execute("INSERT OR IGNORE INTO book_genres (book_id, genre_id) VALUES (?, ?)", (book_id, genre_id))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Fehler beim Zuordnen der Genres: {e}")
+            return False

@@ -137,7 +137,6 @@ async def google_bildsuche_async(titel, autor, isbn=""):
     if not bild_urls and isbn_clean:
         bild_urls.append(f"https://books.google.com/books/content?id=&printsec=frontcover&img=1&zoom=1&source=gbs_api&isbn={isbn_clean}")
 
-    print(f"Cover-Suche erfolgreich! {len(bild_urls)} Bilder für '{titel}' bereitgestellt.")
     return bild_urls[:8]
 
 async def hole_autoren_metadaten_async(autoren_name, isbn_liste=None):
@@ -283,7 +282,6 @@ async def scrape_autor_details_isbn_de_async(sauberer_name, isbn_liste=None):
                     img_check = await client.head(test_bild_url, timeout=2.5)
                     if img_check.status_code == 200:
                         res_daten['image_url'] = test_bild_url
-                        print(f"🟢 Autorenbild-Treffer auf lesen.isbn.de für ISBN: {isbn_clean}")
                         break
                 except Exception:
                     pass
@@ -374,7 +372,6 @@ async def scrape_buch_details_isbn_de_async(isbn_wert):
                         tag, monat, jahr = datum_match.group(0).split('.')
                         data['published_date'] = f"{jahr}-{monat}-{tag}"
 
-            print(f"Scraper-Ergebnis für {isbn_clean}: {data}")
             return data if data else None
             
         except Exception as e:
