@@ -1,3 +1,9 @@
+import csv
+import io
+import asyncio
+import os
+from datetime import datetime
+from collections import Counter
 from nicegui import ui
 import database
 import layout
@@ -5,8 +11,6 @@ import pdf_export_service
 from layout import basis_layout
 import translations
 from translations import t
-from collections import Counter
-from datetime import datetime
 
 def berechne_grund_statistiken(user_id):
     """Berechnet globale Bestandsdaten der kompletten Bibliothek."""
@@ -17,6 +21,10 @@ def berechne_grund_statistiken(user_id):
     total_books = len(buecher)
     format_counts = Counter()
     status_counts = Counter()
+    
+    # Counter für alle vier Besitzstatusse
+    ownership_counts = Counter({'OWNED': 0, 'BORROWED': 0, 'LENT': 0, 'GIVEN_AWAY': 0})
+    
     sterne_counts = {str(i): 0 for i in range(1, 6)}
     verfuegbare_jahre = set()
     
@@ -33,10 +41,12 @@ def berechne_grund_statistiken(user_id):
         pages = b[4] or 0
         rating = b[6] or 0
         fmt = b[23] or 'PHYSICAL'
+        ownership = b[24] or 'OWNED'
         finished_at = b[12]
 
         format_counts[fmt] += 1
         status_counts[status] += 1
+        ownership_counts[ownership] += 1
         
         if rating > 0 and str(rating) in sterne_counts:
             sterne_counts[str(rating)] += 1
@@ -63,6 +73,7 @@ def berechne_grund_statistiken(user_id):
         'total_books': total_books,
         'format_data': [{'name': t(k), 'value': v} for k, v in format_counts.items()],
         'status_data': [{'name': t(k.lower()), 'value': v} for k, v in status_counts.items()],
+        'ownership_counts': ownership_counts,
         'seiten_keys': [t(k) for k in seiten_klassen.keys()],
         'seiten_values': list(seiten_klassen.values()),
         'sterne_keys': [f"{k} ⭐" for k in sterne_counts.keys()],
@@ -131,17 +142,14 @@ def statistik_seite():
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']
     
-    chart_theme = 'dark' if is_dark else None
     axis_text_color = '#f8fafc' if is_dark else '#334155'
     grid_line_color = '#334155' if is_dark else '#e2e8f0'
     dark_prop = 'dark popup-content-class="dark"' if is_dark else ''
     
     bg_card = 'bg-slate-800 border-slate-700 text-slate-100' if is_dark else 'bg-slate-50 border-slate-200 text-slate-700'
-    bg_kpi_card = 'bg-slate-800 border-slate-700' if is_dark else 'bg-slate-50 border-slate-200'
+    bg_kpi_card = 'bg-slate-800 border-slate-700 text-slate-100' if is_dark else 'bg-slate-50 border-slate-200 text-slate-700'
     text_kpi_num = 'text-slate-100' if is_dark else 'text-slate-700'
-    
-    # REPARIERT: Selektoren-Hintergrund für perfekten Kontrast im Darkmode vorbereiten
-    bg_selector = 'bg-slate-800 text-slate-100' if is_dark else 'bg-white text-slate-700'
+    style_modal = 'background-color: #1e293b; color: #f8fafc;' if is_dark else ''
 
     with basis_layout('statistics'):
         ui.label(t('stats_title')).classes('text-2xl font-bold text-slate-700 dark:text-slate-100 mb-2')
@@ -155,29 +163,22 @@ def statistik_seite():
                 ui.label(t('stats_no_data'))
             return
         
-        # Aktuelles Jahr als String ermitteln (z.B. "2026")
         aktuelles_jahr = str(datetime.now().year)
         if aktuelles_jahr not in global_stats['jahres_liste']:
-            # Fügt das aktuelle Jahr direkt nach 'ALL' ein
             global_stats['jahres_liste'].insert(1, aktuelles_jahr)
 
         # 1. Das Modal-Element definieren
-        with ui.dialog() as share_modal, ui.card().classes('p-6 w-96'):
-            # ÜBERSETZT: Titel des Modals
+        with ui.dialog() as share_modal, ui.card().classes('p-6 w-96').style(style_modal):
             ui.label(t('share_report_title')).classes('text-lg font-bold mb-4')
-            # ÜBERSETZT: Beschreibungstext
             ui.label(t('share_report_desc')).classes('mb-4 text-sm')
             
-            # Modal-Auswahl
             modal_jahr = ui.select(
                 options={j: (t('all_years') if j == 'ALL' else j) for j in global_stats['jahres_liste']},
                 value=aktuelles_jahr
-            ).classes('w-full mb-4')
+            ).classes('w-full mb-4').props(dark_prop)
 
-            # ÜBERSETZT: Export-Button Text
             ui.button(t('share_report_btn_export'), icon='picture_as_pdf', 
                       on_click=lambda: starte_export(modal_jahr.value)).classes('w-full bg-indigo-600')
-            # ÜBERSETZT: Schließen-Button Text
             ui.button(t('close'), on_click=share_modal.close).props('flat')
 
         # 2. Die Funktion im Hintergrund
@@ -185,32 +186,23 @@ def statistik_seite():
             ui.notify(t('generating_pdf'), type='info')
             share_modal.close()
             try:
-                # Ruft den neuen Service auf
                 pdf_pfad = await pdf_export_service.export_personal_pdf(layout.aktiver_user_id, jahr)
-                # Triggert den automatischen Browser-Download
                 ui.download(pdf_pfad)
             except Exception as e:
-                # ÜBERSETZT: Fehlermeldung-Präfix
                 ui.notify(f"{t('share_report_error')}: {str(e)}", type='negative')
 
         # =========================================================================
-        # SEKTION 1: PERSÖNLICHE STATISTIKEN (Jetzt ganz oben)
+        # SEKTION 1: PERSÖNLICHE STATISTIKEN
         # =========================================================================
-        # Die Hauptzeile nutzt justify-between: Alles darin wird auf die Außenkanten geschoben
         with ui.row().classes('w-full justify-between items-center mb-4 gap-4'):
             ui.label(t('stats_sec_personal')).classes('text-lg font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wide')
             
-            # Diese Gruppe hält alle Interaktions-Elemente zusammen rechts
             with ui.row().classes('gap-2 items-center'):
-                
-                # REPARIERT: Anführungszeichen bei color="primary" gesetzt, um den /dark-Fehler im Log zu eliminieren
                 ui.button(icon='share', on_click=share_modal.open) \
                     .props('flat round color="primary"') \
                     .classes('mr-2') \
                     .tooltip(t('export_report'))
 
-                # REPARIERT: bg_selector, manuelle Rahmen-Klassen (border-slate-x) und text-sm gelöscht.
-                # 'outlined dense' regelt das native Text- und Border-Styling über Quasar völlig fehlerfrei!
                 auswahl_chart_typ = ui.select(
                     options={'bar': '📊 ' + t('chart_type_bar'), 'line': '📈 ' + t('chart_type_line')},
                     value='bar',
@@ -218,8 +210,6 @@ def statistik_seite():
                 ).classes('w-40 px-1') \
                  .props(f'dense outlined {dark_prop}')
 
-                # REPARIERT: Auch hier alle manuellen Rahmen- und Texterzwingungen entfernt,
-                # damit die Box exakt das identische Erscheinungsbild wie auf der Hauptseite annimmt.
                 auswahl_jahr = ui.select(
                     options={j: (t('all_years') if j == 'ALL' else j) for j in global_stats['jahres_liste']},
                     value=aktuelles_jahr,  
@@ -248,10 +238,7 @@ def statistik_seite():
                     ui.label(t('stats_no_data_year'))
                 return
 
-            # --- VERLAUFS-GRID ---
             with ui.element('div').classes('w-full grid grid-cols-1 md:grid-cols-2 gap-6 mb-10'):
-                
-                # Gelesene Bücher im Verlauf
                 with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
                     label_buecher_verlauf = t('stats_chart_books_development') if 'stats_chart_books_development' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Gelesene Bücher im Verlauf'
                     ui.label(label_buecher_verlauf).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
@@ -264,7 +251,6 @@ def statistik_seite():
                         buecher_series['itemStyle'] = {'color': '#6366f1'}
                         buecher_series['areaStyle'] = {'color': 'rgba(99, 102, 241, 0.1)'}
 
-                    # REPARIERT: theme=chart_theme entfernt, da NiceGUI hier manchmal Strings fehlinterpretiert
                     ui.echart({
                         'backgroundColor': 'transparent',
                         'xAxis': {'type': 'category', 'data': p_stats['x_achse_keys'], 'axisLabel': {'color': axis_text_color}},
@@ -273,7 +259,6 @@ def statistik_seite():
                         'series': [buecher_series]
                     }).classes('w-full h-64')
 
-                # Gelesene Seiten im Verlauf
                 with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
                     ui.label(t('stats_chart_monthly_pages')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
                     
@@ -285,7 +270,6 @@ def statistik_seite():
                         seiten_series['itemStyle'] = {'color': '#10b981'}
                         seiten_series['areaStyle'] = {'color': 'rgba(16, 185, 129, 0.1)'}
 
-                    # REPARIERT: Auch hier theme=chart_theme entfernt
                     ui.echart({
                         'backgroundColor': 'transparent',
                         'xAxis': {'type': 'category', 'data': p_stats['x_achse_keys'], 'axisLabel': {'color': axis_text_color}},
@@ -296,42 +280,84 @@ def statistik_seite():
 
         personal_stats_container()
 
-
         # =========================================================================
-        # SEKTION 2: ALLGEMEINE TRACKER STATISTIKEN (Jetzt unten, außerhalb des Reloads)
+        # SEKTION 2: ALLGEMEINE TRACKER STATISTIKEN
         # =========================================================================
         ui.separator().classes('my-6 dark:bg-slate-700')
         ui.label(t('stats_sec_general')).classes('text-lg font-bold text-slate-700 dark:text-slate-200 mt-2 mb-4 uppercase tracking-wide')
 
-        # Grid für KPI Gesamtbestand & Buchtyp (Kuchendiagramm) nebeneinander
+        # REPARIERT: Echtes 3-Spalten-Layout (md:grid-cols-3) und angeglichene Mindesthöhen (min-h-[19rem])
         with ui.element('div').classes('w-full grid grid-cols-1 md:grid-cols-3 gap-6 mb-6'):
             
-            # KPI Karte
-            with ui.card().classes(f'p-4 border-l-4 border-blue-500 shadow-sm justify-center h-full {bg_kpi_card}'):
-                ui.label(t('stats_total_books')).classes('text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider')
-                ui.label(str(global_stats['total_books'])).classes(f'text-4xl font-black mt-2 {text_kpi_num}')
-
-            # Buchtyp-Kuchendiagramm
-            with ui.card().classes(f'p-4 md:col-span-2 h-64 items-center border shadow-sm {bg_card}'):
-                ui.label(t('stats_chart_formats')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
+            # 1. ANZEIGE: KPI Karte mit Textaufteilung
+            with ui.card().classes(f'p-4 border-l-4 border-blue-500 shadow-sm flex flex-col justify-between h-auto min-h-[19rem] {bg_kpi_card}'):
+                with ui.element('div'):
+                    ui.label(t('stats_total_books')).classes('text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider')
+                    ui.label(str(global_stats['total_books'])).classes(f'text-4xl font-black mt-1 mb-2 {text_kpi_num}')
                 
-                # REPARIERT: theme=chart_theme entfernt
+                oc = global_stats['ownership_counts']
+                with ui.element('div').classes('w-full flex flex-col gap-1.5 pt-2 border-t border-slate-200 dark:border-slate-700 text-xs'):
+                    with ui.row().classes('w-full justify-between items-center bg-blue-500/10 dark:bg-blue-500/5 px-2 py-1 rounded'):
+                        ui.label(t('OWNED')).classes('font-medium')
+                        ui.badge(str(oc['OWNED']), color='blue').classes('text-[10px] font-bold px-2')
+                        
+                    with ui.row().classes('w-full justify-between items-center bg-amber-500/10 dark:bg-amber-500/5 px-2 py-1 rounded'):
+                        ui.label(t('BORROWED')).classes('font-medium')
+                        ui.badge(str(oc['BORROWED']), color='amber').classes('text-[10px] font-bold px-2')
+                        
+                    with ui.row().classes('w-full justify-between items-center bg-purple-500/10 dark:bg-purple-500/5 px-2 py-1 rounded'):
+                        ui.label(t('LENT')).classes('font-medium')
+                        ui.badge(str(oc['LENT']), color='purple').classes('text-[10px] font-bold px-2')
+                        
+                    with ui.row().classes('w-full justify-between items-center bg-red-500/10 dark:bg-red-500/5 px-2 py-1 rounded'):
+                        ui.label(t('ownership_given_away')).classes('font-medium')
+                        ui.badge(str(oc['GIVEN_AWAY']), color='red').classes('text-[10px] font-bold px-2')
+
+            # 3. ANZEIGE: JETZT NEU - Ownership Kuchendiagramm daneben (synchronisierte Farben!)
+            with ui.card().classes(f'p-4 h-auto min-h-[19rem] flex flex-col justify-between border shadow-sm {bg_card}'):
+                label_ownership_chart = t('ownership') if 'ownership' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Besitzstatus'
+                ui.label(label_ownership_chart).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
+                
+                ownership_chart_data = [
+                    {'name': t('OWNED'), 'value': oc['OWNED'], 'itemStyle': {'color': '#3b82f6'}},
+                    {'name': t('BORROWED'), 'value': oc['BORROWED'], 'itemStyle': {'color': '#f59e0b'}},
+                    {'name': t('LENT'), 'value': oc['LENT'], 'itemStyle': {'color': '#a855f7'}},
+                    {'name': t('ownership_given_away'), 'value': oc['GIVEN_AWAY'], 'itemStyle': {'color': '#ef4444'}}
+                ]
+                
                 ui.echart({
                     'tooltip': {'trigger': 'item'},
-                    'legend': {'orient': 'vertical', 'left': 'left', 'top': 'center', 'textStyle': {'color': axis_text_color}},
+                    'legend': {'bottom': '0%', 'left': 'center', 'textStyle': {'color': axis_text_color}},
                     'backgroundColor': 'transparent',
                     'series': [{
-                        'name': t('format'), 'type': 'pie', 'radius': '75%', 'center': ['60%', '50%'],
-                        'label': {'show': True, 'formatter': '{d}%', 'textStyle': {'color': axis_text_color}},
+                        'name': label_ownership_chart, 'type': 'pie', 'radius': '60%', 'center': ['50%', '45%'],
+                        'label': {'show': False, 'formatter': '{d}%', 'textStyle': {'color': axis_text_color}},
+                        'data': ownership_chart_data
+                    }]
+                }).classes('w-full h-56')
+
+
+            # 2. ANZEIGE: Buchtyp-Kuchendiagramm (Nutzt jetzt 1/3 Breite statt 2/3)
+            with ui.card().classes(f'p-4 h-auto min-h-[19rem] flex flex-col justify-between border shadow-sm {bg_card}'):
+                ui.label(t('stats_chart_formats')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
+                
+                ui.echart({
+                    'tooltip': {'trigger': 'item'},
+                    'legend': {'bottom': '0%', 'left': 'center', 'textStyle': {'color': axis_text_color}},
+                    'backgroundColor': 'transparent',
+                    'series': [{
+                        'name': t('format'), 'type': 'pie', 'radius': '60%', 'center': ['50%', '45%'],
+                        'label': {'show': False, 'formatter': '{d}%', 'textStyle': {'color': axis_text_color}},
                         'data': global_stats['format_data']
                     }]
-                }).classes('w-full h-48')
+                }).classes('w-full h-56')
 
-        # Buchlängen-Diagramm (Volle Breite)
+            
+
+        # Buchlängen-Diagramm (Volle Breite darunter)
         with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm mb-6 {bg_card}'):
             ui.label(t('stats_chart_lengths')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
             
-            # REPARIERT: theme=chart_theme entfernt
             ui.echart({
                 'backgroundColor': 'transparent',
                 'xAxis': {'type': 'category', 'data': global_stats['seiten_keys'], 'axisLabel': {'color': axis_text_color}},
@@ -345,14 +371,10 @@ def statistik_seite():
 
         ui.separator().classes('my-6 dark:bg-slate-700')
 
-        # Globales Übersichts-Grid (Status & Sterne) - komplett statisch
         with ui.element('div').classes('w-full grid grid-cols-1 md:grid-cols-2 gap-6'):
-            
-            # Lesestatus (Immer die gesamte Bibliothek)
             with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
                 ui.label(t('stats_chart_status')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
                 
-                # REPARIERT: theme=chart_theme entfernt
                 ui.echart({
                     'tooltip': {'trigger': 'item'},
                     'legend': {'bottom': '0%', 'left': 'center', 'textStyle': {'color': axis_text_color}},
@@ -364,11 +386,9 @@ def statistik_seite():
                     }]
                 }).classes('w-full h-64')
 
-            # Sterne-Bewertungen (Immer der gesamte Zeitraum)
             with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
                 ui.label(t('stats_chart_ratings')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
                 
-                # REPARIERT: theme=chart_theme entfernt
                 ui.echart({
                     'backgroundColor': 'transparent',
                     'xAxis': {'type': 'category', 'data': global_stats['sterne_keys'], 'axisLabel': {'color': axis_text_color}},

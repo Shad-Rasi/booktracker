@@ -142,11 +142,21 @@ def reihen_detailseite(series_name: str):
         
         with ui.grid().classes('w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6'):
             for b in reihen_buecher:
+                # REPARIERT: b[24] zieht die 'ownership' direkt aus deiner bestehenden Tuple-Struktur
                 b_id, b_title, b_author = b[0], b[1], b[2]
                 b_pages, b_status, b_rating, b_num = b[4], b[5] or 'UNREAD', b[6], b[10]
+                b_ownership = b[24] if len(b) > 24 else 'OWNED'
+                
+                # Symmetrisches visuelles Tuning für weggegebene Bücher innerhalb der Reihe
+                if b_ownership == 'GIVEN_AWAY':
+                    card_style = 'border: 1px dashed #ef4444;'
+                    cover_classes = 'w-full h-full object-cover opacity-40 grayscale transition-all'
+                else:
+                    card_style = ''
+                    cover_classes = 'w-full h-full object-cover transition-all'
                 
                 with ui.card().classes(f'p-2 cursor-pointer hover:shadow-md transition-shadow border {bg_buch_karte}') \
-                        .on('click', lambda _, current_book_id=b_id: ui.navigate.to(f'/book/{current_book_id}')):
+                        .style(card_style).on('click', lambda _, current_book_id=b_id: ui.navigate.to(f'/book/{current_book_id}')):
                     
                     with ui.element('div').classes('w-full flex flex-col justify-between h-full'):
                         with ui.element('div').classes('w-full flex flex-col gap-2'):
@@ -154,19 +164,19 @@ def reihen_detailseite(series_name: str):
                             
                             with ui.element('div').classes('relative w-full aspect-[2/3] rounded shadow-sm bg-slate-200 dark:bg-slate-900 flex items-center justify-center overflow-hidden'):
                                 if cover_pfad != "/covers/placeholder.jpg":
-                                    ui.image(cover_pfad).classes('w-full h-full object-cover')
+                                    ui.image(cover_pfad).classes(cover_classes)
                                 else:
-                                    ui.icon('book', size='sm').classes('text-slate-400')
+                                    ui.icon('book', size='sm').classes('text-slate-400' + (' opacity-40' if b_ownership == 'GIVEN_AWAY' else ''))
                                 
                                 with ui.element('div').classes('absolute top-1 left-1 bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow'):
                                     ui.label(f"#{b_num or '?'}")
                                     
-                            with ui.column().classes('px-1 gap-0.5 flex-1 justify-between min-h-[90px]'):
+                            with ui.column().classes('px-1 gap-0.5 flex-1 justify-between min-h-[96px]'):
                                 # Oberer Block: Nur der Titel
                                 with ui.element('div').classes('w-full'):
                                     ui.label(b_title).classes(f'font-bold text-xs md:text-sm line-clamp-2 leading-tight {text_main}')
                                 
-                                # Unterer Block: Sterne und Seiten (kleben jetzt immer fest unten auf gleicher Höhe!)
+                                # Unterer Block: Sterne, Seiten und optionaler Gone-Tag
                                 with ui.element('div').classes('w-full flex flex-col gap-0.5 mt-auto'):
                                     with ui.row().classes('items-center gap-0.5 my-0.5'):
                                         b_rating_val = b_rating if b_rating is not None else 0
@@ -177,7 +187,12 @@ def reihen_detailseite(series_name: str):
                                         else:
                                             ui.label(t('none')).classes('text-[11px] text-slate-400 italic')
                                     
-                                    ui.label(f"{b_pages or '?'} {t('pages_short')}").classes(f'text-[10px] {text_sub}')
+                                    with ui.row().classes('w-full items-center justify-between no-wrap'):
+                                        ui.label(f"{b_pages or '?'} {t('pages_short')}").classes(f'text-[10px] {text_sub}')
+                                        
+                                        # "Weggegeben"-Tag bündig rechts neben der Seitenzahl platzieren
+                                        if b_ownership == 'GIVEN_AWAY':
+                                            ui.label(t('ownership_given_away')).classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase')
                         
                         with ui.row().classes('w-full mt-2 pt-1 px-1 border-t border-slate-200/10'):
                             badge_color = 'teal' if b_status == 'READ' else ('orange' if b_status == 'READING' else 'slate')

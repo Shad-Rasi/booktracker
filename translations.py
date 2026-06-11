@@ -73,6 +73,7 @@ TRANSLATIONS = {
         'OWNED': 'In Besitz',
         'BORROWED': 'Geliehen',
         'LENT': 'Verliehen',
+        'GIVEN_AWAY': 'Weggegeben',
 
         # Statistiken
         'stats_title': 'Bibliotheks-Statistiken',
@@ -389,6 +390,11 @@ TRANSLATIONS = {
     'all_years': 'Alle Jahre',                 # Falls noch nicht vorhanden
     'close': 'Schließen',                       # Falls noch nicht vorhanden
     'export_report': 'Erstelle Bericht',
+
+    'ownership_owned': 'In meinem Besitz',
+    'ownership_lent': 'Verliehen',
+    'ownership_given_away': 'Weggegeben',
+    'given_away': 'Weggegeben',
 
     },
     'en': {
@@ -779,6 +785,11 @@ TRANSLATIONS = {
     'all_years': 'All Years',
     'close': 'Close',
     'export_report': 'Create Report',
+
+    'ownership_owned': 'Owned',
+    'ownership_lent': 'Lent',
+    'ownership_given_away': 'Given Away',
+    'GIVEN_AWAY': 'Given Away',
     }
 }
 

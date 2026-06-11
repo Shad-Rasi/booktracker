@@ -1,3 +1,6 @@
+import os
+import asyncio
+from datetime import datetime
 from nicegui import ui
 import database
 import layout
@@ -5,7 +8,6 @@ from layout import basis_layout
 import translations
 from translations import t
 import book_api
-from datetime import datetime
 
 @ui.page('/authors')
 def autoren_uebersicht():
@@ -82,10 +84,11 @@ def autor_detailseite(author_id: int):
 
         autor_details = database.lade_autor_details(author_id)
         autor_name_fuer_buecher = autor_details[1] if autor_details else ""
+        
+        # REPARIERT: Holt das Array jetzt direkt mit der ownership-Spalte aus der DB
         buecher = database.lade_buecher_von_autor(layout.aktiver_user_id, autor_name_fuer_buecher)
         autoren_isbns = [b[3] for b in buecher if b[3] and str(b[3]).strip()]
 
-        # Hilfsfunktion zur Formatierung der Lebensdaten je nach Sprache
         def formatiere_lebensdatum(datum_str, sprache):
             if not datum_str:
                 return ""
@@ -97,7 +100,6 @@ def autor_detailseite(author_id: int):
             except ValueError:
                 return datum_str
 
-        # GEÄNDERT: Sortierung der Bücher nach Erscheinungsdatum (Index 20 in der DB-Struktur)
         def hole_sortier_datum(b):
             d_str = b[7]  # Index 7 ist b.published_date
             if not d_str:
@@ -186,7 +188,6 @@ def autor_detailseite(author_id: int):
                                 ui.button(icon='edit', on_click=manuelles_editieren) \
                                     .props('round flat dense').classes('text-slate-500 dark:text-slate-400')
                         
-                        # GEÄNDERT: Geburts- und Todesdaten sprachspezifisch formatiert ausgeben
                         sprache = translations.aktuelle_sprache
                         f_birth = formatiere_lebensdatum(a_birth, sprache)
                         f_death = formatiere_lebensdatum(a_death, sprache)
@@ -207,16 +208,26 @@ def autor_detailseite(author_id: int):
         
         # Gridview
         with ui.grid().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4'):
-            for b_id, b_title, b_author, b_isbn, b_pages, b_status, b_rating, b_pub_date in buecher:
+            # REPARIERT: Entpackt die ownership jetzt direkt linear aus dem bestehenden DB-Tuple, ohne Zusatz-SQL!
+            for b_id, b_title, b_author, b_isbn, b_pages, b_status, b_rating, b_pub_date, b_ownership in buecher:
+                
+                # Symmetrisches visuelles Tuning für weggeliehene/weggegebene Bücher
+                if b_ownership == 'GIVEN_AWAY':
+                    card_style = 'border: 1px dashed #ef4444;'
+                    cover_classes = 'w-full h-full object-cover opacity-40 grayscale transition-all'
+                else:
+                    card_style = ''
+                    cover_classes = 'w-full h-full object-cover transition-all'
+
                 with ui.card().classes(f'p-4 cursor-pointer hover:shadow-md transition-shadow border {bg_buch_karte}') \
-                        .on('click', lambda _, current_book_id=b_id: ui.navigate.to(f'/book/{current_book_id}')):
+                        .style(card_style).on('click', lambda _, current_book_id=b_id: ui.navigate.to(f'/book/{current_book_id}')):
                     with ui.row().classes('w-full items-center gap-3 no-wrap'):
                         cover_pfad = database.hole_cover_url(b_id)
                         with ui.element('div').classes('w-12 h-18 bg-slate-200 dark:bg-slate-900 rounded flex items-center justify-center text-xs text-slate-400 dark:text-slate-500 shadow-sm flex-shrink-0 overflow-hidden'):
                             if cover_pfad != "/covers/placeholder.jpg":
-                                ui.image(cover_pfad).classes('w-full h-full object-cover')
+                                ui.image(cover_pfad).classes(cover_classes)
                             else:
-                                ui.icon('book', size='sm')
+                                ui.icon('book', size='sm').classes('opacity-40' if b_ownership == 'GIVEN_AWAY' else '')
                         
                         with ui.column().classes('overflow-hidden flex-1 gap-0.5'):
                             ui.label(b_title).classes('font-bold text-sm text-slate-700 dark:text-slate-100 line-clamp-2 leading-tight')
@@ -231,8 +242,13 @@ def autor_detailseite(author_id: int):
                                 else:
                                     ui.label(t('none')).classes('text-[11px] text-slate-400 italic')
 
-                            ui.label(f"{b_pages or '?'} {t('pages_short')}").classes('text-xs text-slate-400 dark:text-slate-500')
-                            
+                            with ui.row().classes('w-full items-center justify-between no-wrap'):
+                                ui.label(f"{b_pages or '?'} {t('pages_short')}").classes('text-xs text-slate-400 dark:text-slate-500')
+                                
+                                # "Weggegeben" Hinweistext neben den Seiten ohne DB-Overhead
+                                if b_ownership == 'GIVEN_AWAY':
+                                    ui.label(t('ownership_given_away')).classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase')
+
                             # Signalfarben für Lesestatustags
                             badge_color = 'teal' if b_status == 'READ' else ('orange' if b_status == 'READING' else 'slate')
                             ui.badge(t(b_status.lower()), color=badge_color).classes('text-[10px] px-1.5 py-0.5 mt-1 align-self-start')

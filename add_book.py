@@ -174,8 +174,8 @@ def formular_rendern(edit_id=None, daten=None):
                     pub_date_input = ui.input(label=t('published_date'), value=db_published_date).classes('w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
                     
                     sprach_optionen = {
-                        'de': t('lang_de') if 'lang_de' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Deutsch', 
-                        'en': t('lang_en') if 'lang_en' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Englisch', 
+                        'de': t('lang_de'), 
+                        'en': t('lang_en'), 
                         'fr': 'Français', 'es': 'Español', 'it': 'Italiano'
                     }
                     lang_input = ui.select(options=sprach_optionen, value=db_language, label=t('language')).classes('w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
@@ -187,7 +187,7 @@ def formular_rendern(edit_id=None, daten=None):
                     format_options = {'PHYSICAL': t('PHYSICAL'), 'AUDIOBOOK': t('AUDIOBOOK'), 'EBOOK': t('EBOOK')}
                     format_input = ui.select(options=format_options, value=db_format, label=t('format')).classes('w-40 dark:bg-slate-900').props(f'outlined dense {select_prop}')
                     
-                    ownership_options = {'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT')}
+                    ownership_options = {'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT'), 'GIVEN_AWAY': t('ownership_given_away')}
                     ownership_input = ui.select(options=ownership_options, value=db_ownership, label=t('ownership')).classes('w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
                     
                     quantity_input = ui.number(label=t('quantity'), value=db_quantity, format='%d').classes('w-20 dark:bg-slate-900').props(f'outlined dense {dark_prop}')

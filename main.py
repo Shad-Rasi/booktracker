@@ -195,11 +195,19 @@ def kacheln_rendern():
                 REGAL_MEMORY['shelf_page'] = aktuelle_seite
                 ui.navigate.to(f'/book/{b["id"]}')
 
+            # DYNAMISCHES VISUELLES TUNING FÜR WEGGEGEBENE BÜCHER
+            if buch['ownership'] == 'GIVEN_AWAY':
+                card_style = 'border: 1px dashed #ef4444;'
+                cover_classes = 'w-full h-full object-cover opacity-40 grayscale transition-all'
+            else:
+                card_style = ''
+                cover_classes = 'w-full h-full object-cover transition-all'
+
             with ui.card().classes('w-full max-w-[180px] h-auto p-0 overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer flex flex-col relative mx-auto') \
-                     .on('click', kachel_klick):
+                     .style(card_style).on('click', kachel_klick):
                 
                 with ui.element('div').classes('relative w-full aspect-[2/3] bg-slate-50 flex items-center justify-center overflow-hidden border-b border-slate-100'):
-                    ui.image(buch['cover_url']).classes('w-full h-full object-cover')
+                    ui.image(buch['cover_url']).classes(cover_classes)
 
                     # Status Badge (Oben rechts)
                     with ui.row().classes('absolute top-2 right-2 items-center gap-0.5 bg-white/90 backdrop-blur-sm px-1.5 py-0.5 rounded shadow-sm--'):
@@ -213,7 +221,7 @@ def kacheln_rendern():
                                 ui.icon(star_icon, size='11px')
 
                 # Textbereich
-                with ui.element('div').classes('w-full h-[90px] p-2 flex flex-col justify-between border-t border-slate-100 dark:border-slate-700'):
+                with ui.element('div').classes('w-full h-[106px] p-2 flex flex-col justify-between border-t border-slate-100 dark:border-slate-700'):
                     with ui.element('div').classes('flex flex-col gap-0.5'):
                         anzeige_titel = buch['title']
                         if ' (' in anzeige_titel and anzeige_titel.endswith(')'):
@@ -222,9 +230,13 @@ def kacheln_rendern():
                         ui.label(anzeige_titel).classes('text-xs font-bold line-clamp-2 text-slate-800 dark:text-slate-100 leading-tight')
                         ui.label(buch['author']).classes('text-[11px] text-slate-500 dark:text-slate-300 line-clamp-1')
                     
-                    with ui.element('div').classes('w-full pt-1 border-t border-slate-100 dark:border-slate-700 text-[10px] text-slate-400 min-h-[16px]'):
+                    with ui.element('div').classes('w-full pt-1 border-t border-slate-100 dark:border-slate-700 flex flex-col justify-end min-h-[32px]'):
                         if buch['reihen_anzeige']:
-                            ui.label(f" {buch['reihen_anzeige']}").classes('text-blue-600 dark:text-blue-400 font-medium line-clamp-1')
+                            ui.label(f" {buch['reihen_anzeige']}").classes('text-blue-600 dark:text-blue-400 font-medium line-clamp-1 text-[10px]')
+                        
+                        # Kleiner Info-Tag unter dem Titel, falls das Buch permanent weggegeben wurde
+                        if buch['ownership'] == 'GIVEN_AWAY':
+                            ui.label(t('ownership_given_away')).classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase mt-0.5')
 
 
 def paginierung_rendern():
@@ -247,7 +259,7 @@ def paginierung_rendern():
         return
 
     with paginierungs_container:
-        def seite_wechseln(neue_seite):
+        def seite_whitespace(neue_seite):
             global aktuelle_seite
             aktuelle_seite = neue_seite
             REGAL_MEMORY['shelf_page'] = neue_seite  # Direkt im Speicher sichern
@@ -255,16 +267,16 @@ def paginierung_rendern():
             paginierung_rendern()
             ui.run_javascript('window.scrollTo({top: 0, behavior: "smooth"});')
 
-        prev_btn = ui.button(icon='chevron_left', on_click=lambda: seite_wechseln(aktuelle_seite - 1)).props('flat dense')
+        prev_btn = ui.button(icon='chevron_left', on_click=lambda: seite_whitespace(aktuelle_seite - 1)).props('flat dense')
         prev_btn.set_visibility(aktuelle_seite > 1)
 
         for i in range(1, seiten_anzahl + 1):
             ist_aktiv = (i == aktuelle_seite)
-            ui.button(str(i), on_click=lambda idx=i: seite_wechseln(idx)) \
+            ui.button(str(i), on_click=lambda idx=i: seite_whitespace(idx)) \
                 .props('outline' if not ist_aktiv else 'flat') \
                 .classes('px-3 py-1 font-bold text-xs rounded' + (' bg-slate-700 text-white' if ist_aktiv else ' text-slate-700'))
 
-        next_btn = ui.button(icon='chevron_right', on_click=lambda: seite_wechseln(aktuelle_seite + 1)).props('flat dense')
+        next_btn = ui.button(icon='chevron_right', on_click=lambda: seite_whitespace(aktuelle_seite + 1)).props('flat dense')
         next_btn.set_visibility(aktuelle_seite < seiten_anzahl)
 
 
@@ -286,12 +298,8 @@ def hauptseite():
             ui.button(t('add_book'), on_click=lambda: ui.navigate.to('/add')).classes('bg-green-600 text-white')
 
         # --- SUCHLEISTE & EXPANDABLE FILTER ---
-        # --- SUCHLEISTE & EXPANDABLE FILTER ---
         user_ui = database.lade_user_settings(layout.aktiver_user_id)
         is_dark = user_ui['dark_mode']
-
-        # REPARIERT: Keine händischen Tailwind-Hintergründe mehr für Selektoren!
-        # Quasar regelt das über das native 'dark'-Flag komplett identisch zum Input.
         dark_prop = 'dark popup-content-class="dark"' if is_dark else ''
 
         with ui.card().classes('w-full p-4 bg-slate-100 dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 mb-4 flex flex-col gap-3'):
@@ -310,8 +318,6 @@ def hauptseite():
                     'rating_desc': '⭐ ' + t('sort_rating')
                 }
                 
-                # REPARIERT: f-String bg_selector entfernt. Das Feld nutzt jetzt das exakt gleiche 'outlined dense dark' wie das Suchfeld.
-                # 'filled' oder 'outlined' sorgt dafür, dass Quasar die Hintergrund-Inkonsistenz im Light/Darkmode auflöst.
                 sort_filter = ui.select(options=sort_opts, value=REGAL_MEMORY['filter_sort'], on_change=lambda: filter_anwenden())\
                     .classes('w-48 px-1')\
                     .props(f'outlined dense {dark_prop}')
@@ -331,7 +337,6 @@ def hauptseite():
                 ])
                 filter_sektion.visible = erweiterte_filter_aktiv
                 
-                # REPARIERT: Bei allen folgenden Dropdowns ebenfalls den bg_selector und die erzwungene Hintergrundfarbe entfernt!
                 status_opts = {'ALL': '🔍 ' + t('status') + ': ' + t('none'), 'UNREAD': t('unread'), 'READING': t('reading'), 'READ': t('read')}
                 status_filter = ui.select(options=status_opts, value=REGAL_MEMORY['filter_status'], on_change=lambda: filter_anwenden())\
                     .classes('flex-1 min-w-[200px] px-1')\
@@ -342,7 +347,7 @@ def hauptseite():
                     .classes('flex-1 min-w-[200px] px-1')\
                     .props(f'outlined dense {dark_prop}')
                 
-                own_opts = {'ALL': '🤝 ' + t('ownership') + ': ' + t('none'), 'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT')}
+                own_opts = {'ALL': '🤝 ' + t('ownership') + ': ' + t('none'), 'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT'), 'GIVEN_AWAY': t('ownership_given_away')}
                 ownership_filter = ui.select(options=own_opts, value=REGAL_MEMORY['filter_ownership'], on_change=lambda: filter_anwenden())\
                     .classes('flex-1 min-w-[200px] px-1')\
                     .props(f'outlined dense {dark_prop}')
@@ -367,20 +372,16 @@ def hauptseite():
                 nav_type = await ui.run_javascript('performance.navigation.type')
                 kam_ueber_zurueck = (nav_type == 2)
             except Exception:
-                # Fallback, falls die Performance-API fehlschlägt: Wir behandeln es wie einen Zurück-Sprung,
-                # um die Filter für den User standardmäßig immer am Leben zu halten!
                 kam_ueber_zurueck = True
 
-            # GEÄNDERT: Wir übergeben 'behalte_seite=True', damit die Filter-Zustände aus dem Speicher geladen werden
             filter_anwenden(behalte_seite=True)
             
-            # Scrollstand wiederherstellen (unabhängig davon, wie man auf die Seite kommt)
+            # Scrollstand wiederherstellen
             gespeicherter_scrollstand = REGAL_MEMORY['shelf_scroll']
             if gespeicherter_scrollstand > 0:
                 await asyncio.sleep(0.15)
                 await ui.run_javascript(f'window.scrollTo(0, {gespeicherter_scrollstand});')
                 
-            # Scroll-Gedächtnis leeren, damit es bei händischen Menüklicks nicht hakt
             REGAL_MEMORY['shelf_scroll'] = 0
 
         ui.context.client.on_connect(initialisiere_regal_stand)

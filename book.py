@@ -380,9 +380,20 @@ def detailseite(b_id: int):
                     if editor: ui.label(f"{t('editor')}: {editor}")
 
                 if is_series and s_name:
-                    with ui.row().classes('w-full mt-2 p-3 bg-blue-50/50 dark:bg-slate-800 rounded border border-blue-100 dark:border-blue-900/50 items-center text-sm text-blue-800 dark:text-blue-300 font-medium'):
-                        ui.icon('layers').classes('text-blue-500 dark:text-blue-400')
-                        ui.label(f"{t('series_name')}: {s_name} ({t('series_volume')} {s_num or 0})")
+                    with ui.row().classes('w-full mt-2 p-3 bg-blue-50/50 dark:bg-slate-800 rounded border border-blue-100 dark:border-blue-900/50 items-center text-sm text-blue-800 dark:text-blue-300 font-medium no-wrap gap-1'):
+                        ui.icon('layers').classes('text-blue-500 dark:text-blue-400 mr-1')
+                        
+                        # Statischer Präfix (z. B. "Reihe:")
+                        ui.label(f"{t('series_name')}:")
+                        
+                        # REPARIERT: Der Reihenname als klickbarer Link zur Reihen-Detailseite
+                        ui.label(s_name) \
+                            .classes('cursor-pointer text-blue-600 dark:text-blue-400 hover:underline transition-all font-bold') \
+                            .on('click', lambda name=s_name: ui.navigate.to(f'/series/{name}')) \
+                            .tooltip(t('view_series') if 'view_series' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Reihe anzeigen')
+                        
+                        # Die Bandnummer (z. B. "(Band 2)") als normaler Text dahinter
+                        ui.label(f"({t('series_volume')} {s_num or 0})").classes('text-slate-500 dark:text-slate-400 pl-1')
 
                 ui.separator().classes('my-4 dark:bg-slate-700')
 

@@ -210,12 +210,25 @@ def exportiere_buecher():
             isbn13_raw = str(b[3]).strip() if b[3] else ""
             isbn13_formatted = f'="{isbn13_raw}"' if isbn13_raw else ""
 
+            # NEU: Ownership für den Export auswerten
+            ownership_db = b[24] if len(b) > 24 else 'OWNED' # Passe den Index an deine Spaltenstruktur an!
+            
+            owned_status = "0" if ownership_db == 'GIVEN_AWAY' else "1"
+            owned_notes = "Weggegeben" if ownership_db == 'GIVEN_AWAY' else ""
+            
+            if ownership_db == 'LENT':
+                owned_notes = "Verliehen"
+
             row = [
                 b[0], b[1], b[2] if b[2] else "Unbekannt", "", "", b[18] if b[18] else "", isbn13_formatted,
                 b[6] if b[6] is not None else 0, "0.0", b[19] if b[19] else "", binding, b[4] if b[4] else 0,
                 b[20][:4] if b[20] else "", b[20][:4] if b[20] else "", date_read, heute_slash, "", "", exclusive_shelf,
-                b[22] if b[22] else "", "", "", "1" if status_db == 'READ' else "0", b[25] if b[25] is not None else 1,
-                "", "", "", "", "", "", date_read[:4] if date_read else ""
+                b[22] if b[22] else "", "", "", "1" if status_db == 'READ' else "0", 
+                b[25] if b[25] is not None else 1, # Quantity
+                owned_status,  # Spalte 'Owned Status' (0 = nicht mehr im Besitz, 1 = im Besitz)
+                "", 
+                owned_notes,   # Spalte 'Owned Notes' (Notiz über Verbleib)
+                "", "", "", date_read[:4] if date_read else ""
             ]
             writer.writerow(["" if x is None else str(x) for x in row])
 

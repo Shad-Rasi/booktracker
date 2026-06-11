@@ -416,7 +416,7 @@ def lade_buecher_von_autor(user_id, autoren_name):
         cursor = conn.cursor()
         # Wir fügen b.published_date als 8. Feld (Index 7) hinzu
         cursor.execute("""
-            SELECT b.id, b.title, b.author, b.isbn_13, b.pages, ub.status, ub.rating, b.published_date
+            SELECT b.id, b.title, b.author, b.isbn_13, b.pages, ub.status, ub.rating, b.published_date, ub.ownership
             FROM books b
             JOIN user_books ub ON b.id = ub.book_id
             WHERE ub.user_id = ? AND b.author = ?
