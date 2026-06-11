@@ -11,11 +11,11 @@ import book_api
 
 @ui.page('/authors')
 def autoren_uebersicht():
-    # 1. Darkmode-Zustand für den statischen Teil ermitteln
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']
     
-    with basis_layout('authors'):
+    # REPARIERT: Nutzt jetzt den eindeutigen Key 'authors_title' für den Tab ("Autoren & Schriftsteller")
+    with basis_layout('authors_title'):
         ui.label(t('authors_title')).classes('text-2xl font-bold text-slate-700 dark:text-slate-100 mb-2')
         ui.label(t('authors_subtitle')).classes('text-sm text-slate-500 dark:text-slate-400 mb-6')
         
@@ -27,7 +27,7 @@ def autoren_uebersicht():
                 ui.label(t('no_authors_found'))
             return
 
-        # --- SUCHLEISTE (ERZWUNGENER DARKMODE-RAHMEN) ---
+        # --- SUCHLEISTE ---
         with ui.card().classes('w-full p-4 bg-slate-100 dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 mb-6 flex flex-col gap-3'):
             with ui.row().classes('w-full items-center gap-4'):
                 suchfeld = ui.input(
@@ -50,7 +50,7 @@ def autoren_uebersicht():
             
             if not gefilterte_autoren:
                 with ui.element('div').classes('w-full p-8 text-center text-slate-400 dark:text-slate-500 italic'):
-                    ui.label(t('no_search_results') if 'no_search_results' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Keine passenden Autoren gefunden')
+                    ui.label(t('no_search_results'))
                 return
 
             with ui.element('div').classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6'):
@@ -77,15 +77,17 @@ def autor_detailseite(author_id: int):
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']
     
-    with basis_layout('authors'):
+    autor_details = database.lade_autor_details(author_id)
+    autor_name = autor_details[1] if autor_details else "Unbekannter Autor"
+    
+    # REPARIERT: Übergibt dem Layout den echten Autorennamen als Titel. Da dieser Name kein Key 
+    # in der translations.py ist, schreibt das Layout ihn stur als Text oben in den Browsertab!
+    with basis_layout(autor_name):
         
         ui.button(t('back_to_authors'), icon='arrow_back', on_click=lambda: ui.navigate.to('/authors')) \
             .props('flat dense').classes('text-slate-500 dark:text-slate-400 mb-4')
 
-        autor_details = database.lade_autor_details(author_id)
         autor_name_fuer_buecher = autor_details[1] if autor_details else ""
-        
-        # REPARIERT: Holt das Array jetzt direkt mit der ownership-Spalte aus der DB
         buecher = database.lade_buecher_von_autor(layout.aktiver_user_id, autor_name_fuer_buecher)
         autoren_isbns = [b[3] for b in buecher if b[3] and str(b[3]).strip()]
 
@@ -101,7 +103,7 @@ def autor_detailseite(author_id: int):
                 return datum_str
 
         def hole_sortier_datum(b):
-            d_str = b[7]  # Index 7 ist b.published_date
+            d_str = b[7]
             if not d_str:
                 return "0000-00-00"
             return str(d_str).strip()
@@ -126,7 +128,6 @@ def autor_detailseite(author_id: int):
                 
             a_id, a_name, a_bio, a_birth, a_death, a_img, a_local_img = autor
             
-            # --- AUTOREN KOPFZEILE (PROFIL) ---
             with ui.card().classes(f'w-full p-6 shadow-sm mb-6 border {bg_profile_card}'):
                 with ui.row().classes('w-full items-center gap-6 no-wrap flex-col sm:flex-row'):
                     
@@ -206,12 +207,9 @@ def autor_detailseite(author_id: int):
         
         bg_buch_karte = 'bg-slate-800 border-slate-700' if is_dark else 'bg-white border-slate-100'
         
-        # Gridview
         with ui.grid().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4'):
-            # REPARIERT: Entpackt die ownership jetzt direkt linear aus dem bestehenden DB-Tuple, ohne Zusatz-SQL!
             for b_id, b_title, b_author, b_isbn, b_pages, b_status, b_rating, b_pub_date, b_ownership in buecher:
                 
-                # Symmetrisches visuelles Tuning für weggeliehene/weggegebene Bücher
                 if b_ownership == 'GIVEN_AWAY':
                     card_style = 'border: 1px dashed #ef4444;'
                     cover_classes = 'w-full h-full object-cover opacity-40 grayscale transition-all'
@@ -232,7 +230,6 @@ def autor_detailseite(author_id: int):
                         with ui.column().classes('overflow-hidden flex-1 gap-0.5'):
                             ui.label(b_title).classes('font-bold text-sm text-slate-700 dark:text-slate-100 line-clamp-2 leading-tight')
                             
-                            # Bewertung in Form von Sternen unter dem Titel
                             with ui.row().classes('items-center gap-0.5 my-0.5'):
                                 b_rating_val = b_rating if b_rating is not None else 0
                                 if b_rating_val > 0:
@@ -245,10 +242,8 @@ def autor_detailseite(author_id: int):
                             with ui.row().classes('w-full items-center justify-between no-wrap'):
                                 ui.label(f"{b_pages or '?'} {t('pages_short')}").classes('text-xs text-slate-400 dark:text-slate-500')
                                 
-                                # "Weggegeben" Hinweistext neben den Seiten ohne DB-Overhead
                                 if b_ownership == 'GIVEN_AWAY':
                                     ui.label(t('ownership_given_away')).classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase')
 
-                            # Signalfarben für Lesestatustags
                             badge_color = 'teal' if b_status == 'READ' else ('orange' if b_status == 'READING' else 'slate')
                             ui.badge(t(b_status.lower()), color=badge_color).classes('text-[10px] px-1.5 py-0.5 mt-1 align-self-start')

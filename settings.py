@@ -115,8 +115,7 @@ async def import_queue_verarbeiten(buecher_liste, fortschritt_label, fortschritt
         try:
             neue_id = database.speichere_buch_in_db(None, layout.aktiver_user_id, book_data, user_data)
             if neue_id and cover_url_to_download:
-                db_path_obj = getattr(database, 'DB_PATH', None) # Dynamische Erkennung des Cover-Download-Pfads falls nötig
-                # Fallback falls Funktionsname lade_und_speichere_cover lautet
+                db_path_obj = getattr(database, 'DB_PATH', None)
                 if hasattr(database, 'lade_und_speichere_cover'):
                     database.lade_und_speichere_cover(neue_id, cover_url_to_download)
                 else:
@@ -143,7 +142,7 @@ async def handle_upload(e, status_container, upload_element, is_dark):
         if 'ISBN13' in content or 'Title' in content:
             reader = csv.DictReader(io.StringIO(content))
             for row in reader:
-                title, author, isbn13, shelf, rating = row.get('Title'), row.get('Author'), isbn_bearbeiten(row.get('ISBN13')), row.get('Exclusive Shelf'), row.get('My Rating')
+                title, author, isbn13, shelf, rating = row.get('Title'), row.get('Author'), isbn_bereinigen(row.get('ISBN13')), row.get('Exclusive Shelf'), row.get('My Rating')
                 if not title and not isbn13: continue
                 buecher_liste.append({
                     'title': title if title else f"ISBN: {isbn13}", 'author': author if author else t('unknown_author'),
@@ -158,7 +157,6 @@ async def handle_upload(e, status_container, upload_element, is_dark):
             ui.notify(t('import_error_no_data'), type='warning')
             return
             
-        # REPARIERT: t() kriegt nur noch einen Key, die Anzahl hängen wir per f-String dahinter!
         ui.notify(f"{len(buecher_liste)} {t('import_notify_loaded')}", type='info')
         upload_element.set_visibility(False)
         
@@ -212,8 +210,7 @@ def exportiere_buecher():
             isbn13_raw = str(b[3]).strip() if b[3] else ""
             isbn13_formatted = f'="{isbn13_raw}"' if isbn13_raw else ""
 
-            # NEU: Ownership für den Export auswerten
-            ownership_db = b[24] if len(b) > 24 else 'OWNED' # Passe den Index an deine Spaltenstruktur an!
+            ownership_db = b[24] if len(b) > 24 else 'OWNED'
             
             owned_status = "0" if ownership_db == 'GIVEN_AWAY' else "1"
             owned_notes = "Weggegeben" if ownership_db == 'GIVEN_AWAY' else ""
@@ -226,10 +223,10 @@ def exportiere_buecher():
                 b[6] if b[6] is not None else 0, "0.0", b[19] if b[19] else "", binding, b[4] if b[4] else 0,
                 b[20][:4] if b[20] else "", b[20][:4] if b[20] else "", date_read, heute_slash, "", "", exclusive_shelf,
                 b[22] if b[22] else "", "", "", "1" if status_db == 'READ' else "0", 
-                b[25] if b[25] is not None else 1, # Quantity
-                owned_status,  # Spalte 'Owned Status' (0 = nicht mehr im Besitz, 1 = im Besitz)
+                b[25] if b[25] is not None else 1,
+                owned_status,
                 "", 
-                owned_notes,   # Spalte 'Owned Notes' (Notiz über Verbleib)
+                owned_notes,
                 "", "", "", date_read[:4] if date_read else ""
             ]
             writer.writerow(["" if x is None else str(x) for x in row])
@@ -341,7 +338,7 @@ def einstellungen_seite():
         with ui.element('div').classes('w-full max-w-7xl grid grid-cols-1 md:grid-cols-2 gap-6 items-start'):
             
             # ==========================================
-            # SEKTION 1: UI & DARSTELLUNGS-EINSTELLUNGEN (JETZT GANZ OBEN)
+            # SEKTION 1: UI & DARSTELLUNGS-EINSTELLUNGEN
             # ==========================================
             with ui.card().classes(f'w-full p-6 border shadow-sm col-span-full {bg_card}'):
                 ui.label(t('ui_design_title')).classes(f'text-lg font-bold {text_main} mb-2')
@@ -349,8 +346,14 @@ def einstellungen_seite():
                 
                 current_settings = database.lade_user_settings(layout.aktiver_user_id)
                 
+                # REPARIERT: Nimmt den vorschlag_switch.value Zustand jetzt sicher mit auf
                 async def ui_einstellungen_speichern():
-                    database.speichere_user_settings(layout.aktiver_user_id, ansicht_select.value, dark_switch.value)
+                    database.speichere_user_settings(
+                        layout.aktiver_user_id, 
+                        ansicht_select.value, 
+                        dark_switch.value,
+                        vorschlag_switch.value
+                    )
                     if dark_switch.value:
                         ui.dark_mode().enable()
                     else:
@@ -359,7 +362,7 @@ def einstellungen_seite():
                     await asyncio.sleep(0.2)
                     ui.navigate.to('/settings')
 
-                with ui.row().classes('w-full items-center justify-between gap-4 flex-wrap'):
+                with ui.row().classes('w-full items-center justify-between gap-4 flex-wrap mb-4'):
                     view_opts = {
                         'PAGINATED': f"📄 {t('view_paginated')}", 
                         'INFINITE': f"📜 {t('view_infinite')}"
@@ -376,6 +379,19 @@ def einstellungen_seite():
                         value=current_settings['dark_mode'],
                         on_change=ui_einstellungen_speichern
                     ).classes(f'font-medium {text_main}')
+
+                ui.separator().classes('my-3 dark:bg-slate-700')
+
+                # NEU: Der dedizierte Zeilen-Switch für dein Lese-Auslos-Spaßprojekt
+                with ui.row().classes('w-full items-center justify-between gap-4 flex-wrap mt-2'):
+                    with ui.column().classes('gap-0 flex-1 pr-4'):
+                        ui.label(t('settings_suggestion_title')).classes('font-bold text-sm text-slate-800 dark:text-slate-100')
+                        ui.label(t('settings_suggestion_desc')).classes('text-xs text-slate-400 leading-tight mt-0.5')
+                    
+                    vorschlag_switch = ui.switch(
+                        value=current_settings.get('buch_vorschlag_aktiv', False),
+                        on_change=ui_einstellungen_speichern
+                    ).props('color="blue"')
 
             # ==========================================
             # SEKTION 2: BENUTZERVERWALTUNG
@@ -473,7 +489,7 @@ def einstellungen_seite():
                 regal_liste_refresh()
 
             # ==========================================
-            # SEKTION 3b: GENRE-VERWALTUNG (NEU)
+            # SEKTION 3b: GENRE-VERWALTUNG
             # ==========================================
             with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
                 ui.label(t('manage_genres')).classes(f'text-lg font-bold {text_main} mb-2')
@@ -524,7 +540,6 @@ def einstellungen_seite():
             # ==========================================
             # SEKTION 4: DATEI-IMPORT
             # ==========================================
-            # REPARIERT: min-h-[250px] und flex-col justify-between für identische Höhe zu Sektion 5
             ui.label(t('settings_importexport_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide mt-4 -mb-2')
 
             with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
@@ -534,7 +549,6 @@ def einstellungen_seite():
                 
                 status_container = ui.element('div').classes('w-full flex flex-col gap-1')
                 
-                # Das Upload-Feld verhält sich wie eine h-[40px] Box
                 upload_field = ui.upload(auto_upload=True).props(
                     f'accept=.csv,.txt label="{t("import_select_file")}" hide-upload-btn label-slot outlined dense {dark_prop}'
                 ).classes('w-full h-[40px]')
@@ -543,21 +557,18 @@ def einstellungen_seite():
             # ==========================================
             # SEKTION 5: DATEI-EXPORT
             # ==========================================
-            # REPARIERT: min-h-[250px] zieht die Karte exakt so lang wie den Import
             with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
                 with ui.element('div'):
                     ui.label(t('export_file_title')).classes(f'text-lg font-bold {text_main}')
                     ui.label(t('export_file_subtitle')).classes(f'text-xs {text_sub} mb-4')
                 
-                # h-[40px] sorgt dafür, dass der Button dieselbe Höhe wie das Upload-Feld drüben hat
                 ui.button(t('export_btn_text'), icon='download', on_click=exportiere_buecher).classes('bg-slate-700 hover:bg-slate-600 text-white h-[40px] w-full shadow-sm rounded text-sm py-0')
 
             # ==========================================
-            # SEKTION 6: DATENSICHERUNG & SYSTEM (BACKUP & RESTORE)
+            # SEKTION 6: DATENSICHERUNG & SYSTEM
             # ==========================================
             ui.label(t('settings_backup_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide mt-4 -mb-2')
 
-            # REPARIERT: Höhe auf min-h-[250px] angehoben für einheitliches Gesamtbild
             with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
                 with ui.element('div'):
                     ui.label(t('settings_backup_subtitle')).classes(f'text-md font-bold {text_main} mb-1')
@@ -578,7 +589,6 @@ def einstellungen_seite():
             # ==========================================
             # SEKTION 7: GEFAHRENZONE (WERKSRESET)
             # ==========================================
-            # REPARIERT: min-h-[250px] gleicht die Gefahrenzone perfekt an das Backup-Feld an
             with ui.card().classes(f'w-full p-6 border border-red-300 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/10 min-h-[250px] flex flex-col justify-between shadow-sm'):
                 with ui.element('div'):
                     ui.label(t('settings_reset_title')).classes('text-md font-bold text-red-700 dark:text-red-400 mb-1')
@@ -591,5 +601,4 @@ def einstellungen_seite():
                         ui.button(t('cancel'), on_click=reset_dialog.close).classes('text-slate-500').props('flat')
                         ui.button(t('settings_reset_execute'), on_click=lambda: [reset_dialog.close(), werksreset_ausfuehren()]).classes('bg-red-600 text-white')
 
-                # h-[40px] für die identische Button-Höhe wie bei allen anderen Sektionen
                 ui.button(t('settings_reset_btn'), icon='delete_forever', on_click=reset_dialog.open).classes('bg-red-600 hover:bg-red-700 text-white h-[40px] w-full rounded shadow-sm text-sm py-0')

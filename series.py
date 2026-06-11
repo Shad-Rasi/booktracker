@@ -1,3 +1,6 @@
+import os
+import asyncio
+from datetime import datetime
 from nicegui import ui
 import database
 import layout
@@ -7,11 +10,11 @@ from translations import t
 
 @ui.page('/series')
 def reihen_uebersicht():
-    # 1. Darkmode-Zustand für den statischen Teil ermitteln
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']
     
-    with basis_layout('series'):
+    # REPARIERT: Nutzt jetzt den eindeutigen Key 'series_title' für den Tab ("Buchreihen")
+    with basis_layout('series_title'):
         ui.label(t('series_title')).classes('text-2xl font-bold text-slate-700 dark:text-slate-100 mb-2')
         ui.label(t('series_subtitle')).classes('text-sm text-slate-500 dark:text-slate-400 mb-6')
         
@@ -98,7 +101,8 @@ def reihen_uebersicht():
                                 ui.label(r_data['author']).classes(f'text-[11px] italic truncate {text_sub}')
                         
                         with ui.row().classes('w-full justify-between items-center mt-2 px-1 pt-1 border-t border-slate-200/10'):
-                            ui.badge(f"{r_data['count']} {t('books_count')}", color='blue').classes('text-[9px] px-1.5 py-0.5')
+                            text_buecher = t('book') if r_data['count'] == 1 else t('books_count')
+                            ui.badge(f"{r_data['count']} {text_buecher}", color='blue').classes('text-[9px] px-1.5 py-0.5')
 
         reihen_raster_refresh()
 
@@ -112,7 +116,8 @@ def reihen_detailseite(series_name: str):
     text_main = 'text-slate-100' if is_dark else 'text-slate-700'
     text_sub = 'text-slate-400' if is_dark else 'text-slate-500'
 
-    with basis_layout('series'):
+    # REPARIERT: Schreibt den Namen der Reihe starr oben in den Browsertab
+    with basis_layout(series_name):
         ui.button(t('back_to_series'), icon='arrow_back', on_click=lambda: ui.navigate.to('/series')) \
             .props('flat dense').classes('text-slate-500 dark:text-slate-400 mb-4')
             
@@ -142,12 +147,10 @@ def reihen_detailseite(series_name: str):
         
         with ui.grid().classes('w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6'):
             for b in reihen_buecher:
-                # REPARIERT: b[24] zieht die 'ownership' direkt aus deiner bestehenden Tuple-Struktur
                 b_id, b_title, b_author = b[0], b[1], b[2]
                 b_pages, b_status, b_rating, b_num = b[4], b[5] or 'UNREAD', b[6], b[10]
                 b_ownership = b[24] if len(b) > 24 else 'OWNED'
                 
-                # Symmetrisches visuelles Tuning für weggegebene Bücher innerhalb der Reihe
                 if b_ownership == 'GIVEN_AWAY':
                     card_style = 'border: 1px dashed #ef4444;'
                     cover_classes = 'w-full h-full object-cover opacity-40 grayscale transition-all'
@@ -172,11 +175,9 @@ def reihen_detailseite(series_name: str):
                                     ui.label(f"#{b_num or '?'}")
                                     
                             with ui.column().classes('px-1 gap-0.5 flex-1 justify-between min-h-[96px]'):
-                                # Oberer Block: Nur der Titel
                                 with ui.element('div').classes('w-full'):
                                     ui.label(b_title).classes(f'font-bold text-xs md:text-sm line-clamp-2 leading-tight {text_main}')
                                 
-                                # Unterer Block: Sterne, Seiten und optionaler Gone-Tag
                                 with ui.element('div').classes('w-full flex flex-col gap-0.5 mt-auto'):
                                     with ui.row().classes('items-center gap-0.5 my-0.5'):
                                         b_rating_val = b_rating if b_rating is not None else 0
@@ -190,7 +191,6 @@ def reihen_detailseite(series_name: str):
                                     with ui.row().classes('w-full items-center justify-between no-wrap'):
                                         ui.label(f"{b_pages or '?'} {t('pages_short')}").classes(f'text-[10px] {text_sub}')
                                         
-                                        # "Weggegeben"-Tag bündig rechts neben der Seitenzahl platzieren
                                         if b_ownership == 'GIVEN_AWAY':
                                             ui.label(t('ownership_given_away')).classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase')
                         

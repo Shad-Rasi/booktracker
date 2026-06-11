@@ -2,6 +2,7 @@ import os
 import httpx
 import requests
 import sqlite3
+import random
 from datetime import datetime
 from pathlib import Path
 
@@ -113,12 +114,13 @@ def init_db():
             )
         """)
 
-        # 6. TABELLE: Benutzer-Einstellungen (Design & Layout)
+        # 6. TABELLE: Benutzer-Einstellungen (Design, Layout & Spaßprojekt)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_settings (
             user_id INTEGER PRIMARY KEY,
             view_mode TEXT DEFAULT 'PAGINATED', -- 'PAGINATED' oder 'INFINITE'
             dark_mode BOOLEAN DEFAULT 0,
+            buch_vorschlag_aktiv BOOLEAN DEFAULT 0, -- NEU für das Spaßprojekt
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         """)
@@ -771,33 +773,34 @@ def lade_user_settings(user_id):
                     user_id = erster_user[0]
                 else:
                     # Totale Absicherung: Wenn die DB komplett leer ist, geben wir Standard-Dummy-Settings zurück
-                    return {'dark_mode': False, 'view_mode': 'PAGINATED'}
+                    return {'dark_mode': False, 'view_mode': 'PAGINATED', 'buch_vorschlag_aktiv': False}
 
             # Jetzt erst führen wir das Insert aus – absolut Foreign-Key-sicher!
             cursor.execute("INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,))
             conn.commit()
             
-            # Die eigentlichen Settings auslesen
-            cursor.execute("SELECT dark_mode, view_mode FROM user_settings WHERE user_id = ?", (user_id,))
+            # Die eigentlichen Settings auslesen (Erweitert um buch_vorschlag_aktiv)
+            cursor.execute("SELECT dark_mode, view_mode, buch_vorschlag_aktiv FROM user_settings WHERE user_id = ?", (user_id,))
             row = cursor.fetchone()
             
             # Mapping für die Rückgabe
             return {
                 'dark_mode': bool(row[0]) if row else False,
-                'view_mode': row[1] if row and row[1] else 'PAGINATED'
+                'view_mode': row[1] if row and row[1] else 'PAGINATED',
+                'buch_vorschlag_aktiv': bool(row[2]) if row and row[2] else False  # NEU
             }
     except Exception as e:
         print(f"Fehler in lade_user_settings für User {user_id}: {str(e)}")
-        return {'dark_mode': False, 'view_mode': 'PAGINATED'}
+        return {'dark_mode': False, 'view_mode': 'PAGINATED', 'buch_vorschlag_aktiv': False}
 
-def speichere_user_settings(user_id, view_mode, dark_mode):
-    """Speichert die UI-Einstellungen für den jeweiligen Nutzer dauerhaft ab."""
+def speichere_user_settings(user_id, view_mode, dark_mode, vorschlag_aktiv):
+    """Speichert die UI-Einstellungen und den Spaßprojekt-Status dauerhaft ab."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT OR REPLACE INTO user_settings (user_id, view_mode, dark_mode)
-            VALUES (?, ?, ?)
-        """, (user_id, view_mode, int(dark_mode)))
+            INSERT OR REPLACE INTO user_settings (user_id, view_mode, dark_mode, buch_vorschlag_aktiv)
+            VALUES (?, ?, ?, ?)
+        """, (user_id, view_mode, int(dark_mode), int(vorschlag_aktiv)))
         conn.commit()
 
 def datenbank_strukturen_leeren():
@@ -894,3 +897,93 @@ def aktualisiere_buch_genres(book_id, genre_namen_liste, user_id):
         except Exception as e:
             print(f"Fehler beim Zuordnen der Genres: {e}")
             return False
+        
+def hole_genre_verteilung_stats(user_id):
+    """Holt die Anzahl der Bücher pro Genre für die Statistik-Charts."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT g.name, COUNT(bg.book_id) as anzahl
+            FROM genres g
+            JOIN book_genres bg ON g.id = bg.genre_id
+            JOIN user_books ub ON bg.book_id = ub.book_id
+            WHERE g.user_id = ? AND ub.user_id = ?
+            GROUP BY g.id
+            ORDER BY anzahl DESC
+        """, (user_id, user_id))
+        return cursor.fetchall()
+        
+def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
+    """
+    Holt ein zufälliges Buch (OWNED oder BORROWED) des Benutzers.
+    Falls das gezogene Buch Teil einer Reihe ist, wird automatisch das ERSTE 
+    noch nicht gelesene Buch ('status' != 'READ') dieser Reihe zurückgegeben.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. BASIS-QUERY: Wir holen alle Bücher im Besitz/geliehen für die Vorauswahl
+        query = """
+            SELECT b.id, b.title, b.is_series, b.series_name
+            FROM books b
+            JOIN user_books ub ON b.id = ub.book_id
+        """
+        params = [user_id]
+        
+        # Falls ein spezifisches Genre gefiltert werden soll
+        if genre_name and genre_name != 'ALL':
+            query += """
+                JOIN book_genres bg ON b.id = bg.book_id
+                JOIN genres g ON bg.genre_id = g.id
+                WHERE ub.user_id = ? AND ub.ownership IN ('OWNED', 'BORROWED') AND g.name = ?
+            """
+            params.append(genre_name)
+        else:
+            query += """
+                WHERE ub.user_id = ? AND ub.ownership IN ('OWNED', 'BORROWED')
+            """
+            
+        cursor.execute(query, params)
+        alle_buecher = cursor.fetchall()
+        
+        # Falls der Bestand (oder das Genre) komplett leer ist
+        if not alle_buecher:
+            return None
+            
+        # 2. ZUFALLS-POOL: Ein Buch blind aus dem Pool ziehen
+        zufalls_buch = random.choice(alle_buecher)
+        b_id, b_title, is_series, series_name = zufalls_buch
+        
+        # 3. REIHEN-LOGIK: Wenn das Buch zu einer Reihe gehört, prüfen wir die Reihenfolge
+        if is_series and series_name:
+            cursor.execute("""
+                SELECT b.id, b.title, b.series_number, ub.status
+                FROM books b
+                JOIN user_books ub ON b.id = ub.book_id
+                WHERE ub.user_id = ? AND b.series_name = ?
+                ORDER BY CAST(b.series_number AS REAL) ASC, b.series_number ASC
+            """, (user_id, series_name))
+            reihen_buecher = cursor.fetchall()
+            
+            # Wir gehen die Reihe von Band 1 aufwärts durch und suchen das erste ungelesene Buch
+            for rb in reihen_buecher:
+                rb_id, rb_title, _, rb_status = rb
+                if rb_status != 'READ':
+                    # Gefunden! Wir überschreiben unseren Vorschlag mit dem korrekten Band
+                    return {
+                        'id': rb_id, 
+                        'title': rb_title, 
+                        'is_series': True, 
+                        'series_name': series_name,
+                        'genres': lade_genres_eines_buches(rb_id)
+                    }
+                    
+        # Wenn es keine Reihe ist oder bereits alle Bände der Reihe gelesen wurden,
+        # bleibt es beim ursprünglich gezogenen Buch.
+        return {
+            'id': b_id, 
+            'title': b_title, 
+            'is_series': False, 
+            'series_name': None,
+            'genres': lade_genres_eines_buches(b_id)
+        }   

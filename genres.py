@@ -23,10 +23,11 @@ def genres_uebersicht():
     text_title = 'text-slate-100' if is_dark else 'text-slate-800'
     text_sub = 'text-slate-400' if is_dark else 'text-slate-500'
 
-    with basis_layout('genres'):
+    # REPARIERT: Nutzt jetzt den Key 'manage_genres' für den Browsertab
+    with basis_layout('manage_genres'):
         # --- HEADER ---
         ui.label(t('manage_genres')).classes(f'text-2xl font-black mb-1 {text_title}')
-        ui.label(t('stats_subtitle')).classes(f'text-sm {text_sub} mb-6')
+        ui.label(t('genre_subtitle') if 'genre_subtitle' in translations.TRANSLATIONS[translations.aktuelle_sprache] else "Stöbere in den verschiedenen Kategorien deiner Bibliothek.").classes(f'text-sm {text_sub} mb-6')
 
         # Alle globalen Genres vorab aus der DB laden
         alle_genres = database.lade_alle_genres(layout.aktiver_user_id)
@@ -94,12 +95,12 @@ def genres_uebersicht():
                                     with ui.element('div').classes('flex flex-col items-center text-slate-400 dark:text-slate-600 gap-1'):
                                         ui.icon('local_offer', size='md')
                             
-                            # REPARIERT: Keine zusätzliche Kategorie-Zeile mehr, nur noch der reine Name
                             with ui.element('div').classes('px-1 flex flex-col gap-0.5'):
                                 ui.label(g_name).classes(f'font-bold text-xs md:text-sm line-clamp-2 leading-tight {text_title}')
                         
                         with ui.row().classes('w-full justify-between items-center mt-2 px-1 pt-1 border-t border-slate-200/10'):
-                            ui.badge(f"{anzahl} {t('books_count')}", color='blue').classes('text-[9px] px-1.5 py-0.5')
+                            text_buecher = t('book') if anzahl == 1 else t('books_count')
+                            ui.badge(f"{anzahl} {text_buecher}", color='blue').classes('text-[9px] px-1.5 py-0.5')
 
         def filter_genres_live(wert):
             global genre_suchtext
@@ -119,7 +120,8 @@ def genre_detailseite(genre_name: str):
     text_main = 'text-slate-100' if is_dark else 'text-slate-700'
     text_sub = 'text-slate-400' if is_dark else 'text-slate-500'
 
-    with basis_layout('genres'):
+    # REPARIERT: Übergibt den reinen Genrenamen (z.B. "Fantasy") direkt starr an den Browsertab
+    with basis_layout(genre_name):
         ui.button(t('back'), icon='arrow_back', on_click=lambda: ui.navigate.to('/genres')) \
             .props('flat dense').classes('text-slate-500 dark:text-slate-400 mb-4')
             
@@ -183,7 +185,7 @@ def genre_detailseite(genre_name: str):
                                         ui.label(f"{b_pages or '?'} {t('pages_short')}").classes(f'text-[10px] {text_sub}')
                                         
                                         if b_ownership == 'GIVEN_AWAY':
-                                            ui.label(t('ownership_given_away_short')).classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase')
+                                            ui.label(t('ownership_given_away_short') if 'ownership_given_away_short' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Weg').classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase')
                         
                         with ui.row().classes('w-full mt-2 pt-1 px-1 border-t border-slate-200/10'):
                             badge_color = 'teal' if b_status == 'READ' else ('orange' if b_status == 'READING' else 'slate')

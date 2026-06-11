@@ -13,6 +13,9 @@ os.makedirs(AUTHOR_DIR, exist_ok=True)
 
 app.add_static_files('/covers', COVER_DIR, follow_symlink=True)
 app.add_static_files('/authors', AUTHOR_DIR, follow_symlink=True)
+app.add_static_files('/static', 'static')
+
+ui.add_head_html('<link rel="icon" type="image/png" href="/static/favicon.png">', shared=True)
 
 # CRITICAL CACHE-FIX
 for route in app.routes:
@@ -457,4 +460,4 @@ def hauptseite():
 
         ui.context.client.on_connect(initialisiere_regal_stand)
 
-ui.run(port=8080, title="Booktracker", reload=True, storage_secret="dein_sicheres_geheimnis_hier")
+ui.run(port=8080, title="Booktracker", favicon="📚", reload=True, storage_secret="dein_sicheres_geheimnis_hier")

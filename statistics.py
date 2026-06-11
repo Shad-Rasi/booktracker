@@ -124,7 +124,7 @@ def berechne_zeitliche_statistiken(buecher, ziel_jahr):
         werte_buecher = [jahres_buecher[j] for j in sortierte_jahre]
         werte_seiten = [jahres_seiten[j] for j in sortierte_jahre]
     else:
-        x_achse_keys = [t(f"month_{m}") if f"month_{m}" in translations.TRANSLATIONS[translations.aktuelle_sprache] else m for m in monats_seiten.keys()]
+        x_achse_keys = [t(f"month_{m}")for m in monats_seiten.keys()]
         werte_buecher = list(monats_buecher.values())
         werte_seiten = list(monats_seiten.values())
 
@@ -151,7 +151,7 @@ def statistik_seite():
     text_kpi_num = 'text-slate-100' if is_dark else 'text-slate-700'
     style_modal = 'background-color: #1e293b; color: #f8fafc;' if is_dark else ''
 
-    with basis_layout('statistics'):
+    with basis_layout('stats_title'):
         ui.label(t('stats_title')).classes('text-2xl font-bold text-slate-700 dark:text-slate-100 mb-2')
         ui.label(t('stats_subtitle')).classes('text-sm text-slate-500 dark:text-slate-400 mb-6')
 
@@ -240,7 +240,7 @@ def statistik_seite():
 
             with ui.element('div').classes('w-full grid grid-cols-1 md:grid-cols-2 gap-6 mb-10'):
                 with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
-                    label_buecher_verlauf = t('stats_chart_books_development') if 'stats_chart_books_development' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Gelesene Bücher im Verlauf'
+                    label_buecher_verlauf = t('stats_chart_books_development')
                     ui.label(label_buecher_verlauf).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
                     
                     buecher_series = {'data': p_stats['werte_buecher'], 'type': chart_typ, 'smooth': True if chart_typ == 'line' else False}
@@ -286,7 +286,6 @@ def statistik_seite():
         ui.separator().classes('my-6 dark:bg-slate-700')
         ui.label(t('stats_sec_general')).classes('text-lg font-bold text-slate-700 dark:text-slate-200 mt-2 mb-4 uppercase tracking-wide')
 
-        # REPARIERT: Echtes 3-Spalten-Layout (md:grid-cols-3) und angeglichene Mindesthöhen (min-h-[19rem])
         with ui.element('div').classes('w-full grid grid-cols-1 md:grid-cols-3 gap-6 mb-6'):
             
             # 1. ANZEIGE: KPI Karte mit Textaufteilung
@@ -313,9 +312,9 @@ def statistik_seite():
                         ui.label(t('ownership_given_away')).classes('font-medium')
                         ui.badge(str(oc['GIVEN_AWAY']), color='red').classes('text-[10px] font-bold px-2')
 
-            # 3. ANZEIGE: JETZT NEU - Ownership Kuchendiagramm daneben (synchronisierte Farben!)
+            # 2. ANZEIGE: Ownership Kuchendiagramm daneben
             with ui.card().classes(f'p-4 h-auto min-h-[19rem] flex flex-col justify-between border shadow-sm {bg_card}'):
-                label_ownership_chart = t('ownership') if 'ownership' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Besitzstatus'
+                label_ownership_chart = t('ownership')
                 ui.label(label_ownership_chart).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
                 
                 ownership_chart_data = [
@@ -336,8 +335,7 @@ def statistik_seite():
                     }]
                 }).classes('w-full h-56')
 
-
-            # 2. ANZEIGE: Buchtyp-Kuchendiagramm (Nutzt jetzt 1/3 Breite statt 2/3)
+            # 3. ANZEIGE: Buchtyp-Kuchendiagramm (1/3 Breite)
             with ui.card().classes(f'p-4 h-auto min-h-[19rem] flex flex-col justify-between border shadow-sm {bg_card}'):
                 ui.label(t('stats_chart_formats')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
                 
@@ -352,25 +350,74 @@ def statistik_seite():
                     }]
                 }).classes('w-full h-56')
 
+        # ==========================================
+        # REIHE: BUCHLÄNGEN & GENRE-VERTEILUNG
+        # ==========================================
+        with ui.element('div').classes('w-full grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 mb-6'):
             
+            # --- LINKS: BUCHLÄNGEN (Vertikale Balken) ---
+            with ui.card().classes(f'p-4 w-full h-80 border shadow-sm {bg_card}'):
+                ui.label(t('stats_chart_lengths')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300 mb-2')
+                
+                ui.echart({
+                    'backgroundColor': 'transparent',
+                    'xAxis': {'type': 'category', 'data': global_stats['seiten_keys'], 'axisLabel': {'color': axis_text_color}},
+                    'yAxis': {'type': 'value', 'axisLabel': {'color': axis_text_color}, 'splitLine': {'lineStyle': {'color': grid_line_color}}, 'minInterval': 1},
+                    'tooltip': {'trigger': 'axis'},
+                    'series': [{
+                        'data': global_stats['seiten_values'], 'type': 'bar',
+                        'itemStyle': {'color': '#3b82f6', 'borderRadius': [4, 4, 0, 0]}
+                    }]
+                }).classes('w-full h-64')
 
-        # Buchlängen-Diagramm (Volle Breite darunter)
-        with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm mb-6 {bg_card}'):
-            ui.label(t('stats_chart_lengths')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
-            
-            ui.echart({
-                'backgroundColor': 'transparent',
-                'xAxis': {'type': 'category', 'data': global_stats['seiten_keys'], 'axisLabel': {'color': axis_text_color}},
-                'yAxis': {'type': 'value', 'axisLabel': {'color': axis_text_color}, 'splitLine': {'lineStyle': {'color': grid_line_color}}},
-                'tooltip': {'trigger': 'axis'},
-                'series': [{
-                    'data': global_stats['seiten_values'], 'type': 'bar',
-                    'itemStyle': {'color': '#3b82f6', 'borderRadius': [4, 4, 0, 0]}
-                }]
-            }).classes('w-full h-64')
+            # --- RECHTS: GENRE-VERTEILUNG (Vertikale Balken) ---
+            with ui.card().classes(f'p-4 w-full h-80 border shadow-sm {bg_card}'):
+                ui.label(t('stats_chart_genres')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300 mb-2')
+                
+                genre_daten = database.hole_genre_verteilung_stats(layout.aktiver_user_id)
+                
+                if not genre_daten:
+                    with ui.column().classes('w-full h-64 items-center justify-center'):
+                        ui.label(t('no_genres_hint')).classes('text-xs italic text-slate-400 text-center')
+                else:
+                    genre_labels = [row[0] for row in genre_daten]
+                    genre_werte = [row[1] for row in genre_daten]
+                    
+                    ui.echart({
+                        'backgroundColor': 'transparent',
+                        'tooltip': {'trigger': 'axis', 'axisPointer': {'type': 'shadow'}},
+                        'xAxis': {
+                            'type': 'category', 
+                            'data': genre_labels, 
+                            'axisLabel': {'color': axis_text_color, 'interval': 0, 'rotate': 25} # Text leicht schräg, falls die Genrenamen länger sind
+                        },
+                        'yAxis': {
+                            'type': 'value', 
+                            'axisLabel': {'color': axis_text_color}, 
+                            'splitLine': {'lineStyle': {'color': grid_line_color}},
+                            'minInterval': 1
+                        },
+                        'series': [{
+                            'name': t('books_count'), 
+                            'type': 'bar',
+                            'data': genre_werte,
+                            'label': {
+                                'show': True, 
+                                'position': 'top', 
+                                'color': axis_text_color
+                            },
+                            'itemStyle': {
+                                'color': '#10b981', 
+                                'borderRadius': [4, 4, 0, 0] # Wächst nach oben, Ecken oben abgerundet
+                            }
+                        }]
+                    }).classes('w-full h-64')
 
         ui.separator().classes('my-6 dark:bg-slate-700')
 
+        # ==========================================
+        # REIHE: LESESTATUS & BEWERTUNGEN
+        # ==========================================
         with ui.element('div').classes('w-full grid grid-cols-1 md:grid-cols-2 gap-6'):
             with ui.card().classes(f'p-4 w-full h-80 items-center border shadow-sm {bg_card}'):
                 ui.label(t('stats_chart_status')).classes('text-sm font-bold self-start text-slate-600 dark:text-slate-300')
