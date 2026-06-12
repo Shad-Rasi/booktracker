@@ -11,4 +11,4 @@ pysqlite3-binary; platform_system=="Linux"
 beautifulsoup4
 
 # Datenexport als PDF
-playwright
+weasyprint

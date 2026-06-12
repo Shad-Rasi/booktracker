@@ -1,30 +1,21 @@
-# Wir starten mit einem schlanken Python-Image
 FROM python:3.11-slim
 
-# Arbeitsverzeichnis im Container festlegen
 WORKDIR /app
 
-# System-Abhängigkeiten installieren (wichtig für spätere Erweiterungen)
+# System-Abhängigkeiten für WeasyPrint (PDF-Rendering via Cairo/Pango)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# requirements kopieren und installieren
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 1. Die normalen Python-Pakete installieren (hier wird das Playwright-Python-Paket geladen)
-RUN pip install --no-cache-dir -r requirements.txt
-# 2. WICHTIG: Den Chromium-Druck-Core im Container nachladen
-RUN playwright install chromium
-# 3. WICHTIG: Die Linux-Systembibliotheken für den Browser installieren
-RUN playwright install-deps chromium
-
-# Den restlichen Code der App in den Container kopieren
 COPY . .
 
-# Port für die NiceGUI-Oberfläche freigeben
 EXPOSE 8080
 
-# Befehl zum Starten der App (wir nennen unsere Hauptdatei später main.py)
 CMD ["python", "main.py"]
