@@ -15,11 +15,11 @@ def get_connection():
     return conn
 
 def init_db():
-    """Initialisiert die erweiterten Tabellenstrukturen und legt Standorte sowie Standard-User an."""
+    """Initialisiert die erweiterten Tabellenstrukturen in der exakt richtigen Reihenfolge."""
     with get_connection() as conn:
         cursor = conn.cursor()
         
-        # 1. TABELLE: Benutzer
+        # 1. Benutzer (Basis-Tabelle, hat keine Fremdschlüssel)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,7 +27,7 @@ def init_db():
             );
         """)
         
-        # 2. TABELLE: Standorte / Bücherregale (Global im Haus)
+        # 2. Standorte (Basis-Tabelle, hat keine Fremdschlüssel)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS locations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,17 +36,18 @@ def init_db():
             );
         """)
         
-        # Genre
+        # 3. Genres (WICHTIG: Muss VOR book_genres kommen, da user_id genutzt wird)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS genres (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
-                UNIQUE(user_id, name)
-            )
+                UNIQUE(user_id, name),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
         """)
 
-        # 3. TABELLE: Globale Buchdaten (Erweitert um all deine neuen Wunschfelder!)
+        # 4. Globale Buchdaten (Nutzt locations)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,10 +70,14 @@ def init_db():
                 series_name TEXT,
                 series_number INTEGER DEFAULT 0,
                 location_id INTEGER,
-                FOREIGN KEY (location_id) REFERENCES locations(id) -- ON SET NULL entfernt
+                ownership TEXT DEFAULT 'OWNED',
+                format TEXT DEFAULT 'PHYSICAL',
+                quantity INTEGER DEFAULT 1,
+                FOREIGN KEY (location_id) REFERENCES locations(id)
             );
         """)
 
+        # 5. Buch-Genres Koppel-Tabelle (Nutzt books UND genres -> MUSS dahinter stehen!)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS book_genres (
                 book_id INTEGER NOT NULL,
@@ -80,19 +85,16 @@ def init_db():
                 PRIMARY KEY (book_id, genre_id),
                 FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
                 FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
-            )
+            );
         """)
         
-        # 4. TABELLE: Benutzer-Buch-Verknüpfung (Format, Besitzstatus, Menge)
+        # 6. Benutzer-Buch-Verknüpfung (Nutzt users UND books)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_books (
                 user_id INTEGER,
                 book_id INTEGER,
-                status TEXT DEFAULT 'UNREAD', -- UNREAD, READING, READ
+                status TEXT DEFAULT 'UNREAD',
                 rating INTEGER DEFAULT 0,
-                format TEXT DEFAULT 'PHYSICAL', -- PHYSICAL, AUDIOBOOK, EBOOK
-                ownership TEXT DEFAULT 'OWNED', -- OWNED, BORROWED, LENT
-                quantity INTEGER DEFAULT 1,
                 started_at TEXT,
                 finished_at TEXT,
                 PRIMARY KEY (user_id, book_id),
@@ -101,7 +103,7 @@ def init_db():
             );
         """)
 
-        # 5. TABELLE: Autoren
+        # 7. Autoren
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS authors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,43 +113,43 @@ def init_db():
                 death_date TEXT,
                 image_url TEXT,
                 local_image_path TEXT
-            )
+            );
         """)
 
-        # 6. TABELLE: Benutzer-Einstellungen (Design, Layout & Spaßprojekt)
+        # 8. Benutzer-Einstellungen
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_settings (
             user_id INTEGER PRIMARY KEY,
-            view_mode TEXT DEFAULT 'PAGINATED', -- 'PAGINATED' oder 'INFINITE'
+            view_mode TEXT DEFAULT 'PAGINATED',
             dark_mode BOOLEAN DEFAULT 0,
-            buch_vorschlag_aktiv BOOLEAN DEFAULT 0, -- NEU für das Spaßprojekt
+            buch_vorschlag_aktiv BOOLEAN DEFAULT 0,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         """)
 
-        # 1. Der Lesedurchgang (Erlaubt unbegrenztes Wiederholen)
+        # 9. Lesezyklus
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS reading_cycles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             book_id INTEGER NOT NULL,
-            status TEXT NOT NULL DEFAULT 'READING', -- READING, READ, ABANDONED
-            started_at TEXT,                        -- YYYY-MM-DD
-            finished_at TEXT,                       -- YYYY-MM-DD
+            status TEXT NOT NULL DEFAULT 'READING',
+            started_at TEXT,
+            finished_at TEXT,
             rating INTEGER DEFAULT 0,
-            FOREIGN KEY(user_id) REFERENCES users(id),
-            FOREIGN KEY(book_id) REFERENCES books(id)
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE
         )
         """)
 
-        # 2. Das tägliche Leseprotokoll (Für den Kalender und Seiten-Statistiken)
+        # 10. Leseprotokoll
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS reading_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cycle_id INTEGER NOT NULL,              -- Verknüpft mit dem aktuellen Durchgang
-            log_date TEXT NOT NULL,                 -- YYYY-MM-DD (Wann wurde gelesen?)
-            progress_page INTEGER NOT NULL,         -- Bis zu welcher Seite wurde gelesen?
-            pages_read INTEGER NOT NULL,            -- Wie viele Seiten wurden in DIESER Session gelesen?
+            cycle_id INTEGER NOT NULL,
+            log_date TEXT NOT NULL,
+            progress_page INTEGER NOT NULL,
+            pages_read INTEGER NOT NULL,
             FOREIGN KEY(cycle_id) REFERENCES reading_cycles(id) ON DELETE CASCADE
         )
         """)
@@ -250,7 +252,7 @@ def lade_buecher_aus_db(user_id):
                 ub.started_at, ub.finished_at,
                 b.subtitle, b.translator, b.narrator, b.illustrator, b.editor,
                 b.isbn_10, b.publisher, b.published_date, b.language, b.description,
-                ub.format, ub.ownership, ub.quantity, b.location_id, l.name
+                b.format, b.ownership, b.quantity, b.location_id, l.name
             FROM books b
             LEFT JOIN user_books ub ON b.id = ub.book_id AND ub.user_id = ?
             LEFT JOIN locations l ON b.location_id = l.id
@@ -260,53 +262,59 @@ def lade_buecher_aus_db(user_id):
         return cursor.fetchall()
 
 def speichere_buch_in_db(active_id, user_id, book_data, user_data):
-    """Fügt ein Buch mit allen erweiterten Metadaten hinzu oder aktualisiert es."""
+    """Fügt ein Buch mit allen erweiterten Metadaten hinzu oder aktualisiert es.
+    
+    Format, Besitzstatus und Menge sind jetzt global beim Buch gespeichert!
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         
         if active_id is None:
-            # Neues Buch in die globale Tabelle einfügen
+            # 1. NEU: ownership, format und quantity direkt hier beim Erstellen mitgeben
             cursor.execute(
                 """INSERT OR IGNORE INTO books 
                    (title, subtitle, author, translator, narrator, illustrator, editor,
                     isbn_13, isbn_10, publisher, published_date, language, description,
-                    pages, special, is_series, series_name, series_number, location_id) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    pages, special, is_series, series_name, series_number, location_id,
+                    ownership, format, quantity) -- HIERHER VERSCHOBEN
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (book_data['title'], book_data.get('subtitle'), book_data['author'],
                  book_data.get('translator'), book_data.get('narrator'), book_data.get('illustrator'), book_data.get('editor'),
                  book_data['isbn'], book_data.get('isbn_10'), book_data.get('publisher'),
                  book_data.get('published_date'), book_data.get('language'), book_data.get('description'),
                  book_data['pages'], book_data['special'], book_data['is_series'], 
-                 book_data['series_name'], book_data['series_number'], book_data.get('location_id'))
+                 book_data['series_name'], book_data['series_number'], book_data.get('location_id'),
+                 user_data.get('ownership', 'OWNED'), user_data.get('format', 'PHYSICAL'), user_data.get('quantity', 1))
             )
-            # ID des (entweder neu angelegten oder ignorierten) Buches holen
+            # ID des Buches holen
             cursor.execute("SELECT id FROM books WHERE isbn_13 = ?", (book_data['isbn'],))
             book_id = cursor.fetchone()[0]
         else:
             book_id = active_id
-            # Bestehendes Buch aktualisieren
+            # 2. NEU: Auch beim Update die Werte in der 'books' Tabelle aktualisieren
             cursor.execute(
                 """UPDATE books SET 
                    title = ?, subtitle = ?, author = ?, translator = ?, narrator = ?, illustrator = ?, editor = ?,
                    isbn_13 = ?, isbn_10 = ?, publisher = ?, published_date = ?, language = ?, description = ?,
-                   pages = ?, special = ?, is_series = ?, series_name = ?, series_number = ?, location_id = ?
+                   pages = ?, special = ?, is_series = ?, series_name = ?, series_number = ?, location_id = ?,
+                   ownership = ?, format = ?, quantity = ? -- HIERHER VERSCHOBEN
                    WHERE id = ?""",
                 (book_data['title'], book_data.get('subtitle'), book_data['author'],
                  book_data.get('translator'), book_data.get('narrator'), book_data.get('illustrator'), book_data.get('editor'),
                  book_data['isbn'], book_data.get('isbn_10'), book_data.get('publisher'),
                  book_data.get('published_date'), book_data.get('language'), book_data.get('description'),
                  book_data['pages'], book_data['special'], book_data['is_series'], 
-                 book_data['series_name'], book_data['series_number'], book_data.get('location_id'), book_id)
+                 book_data['series_name'], book_data['series_number'], book_data.get('location_id'),
+                 user_data.get('ownership', 'OWNED'), user_data.get('format', 'PHYSICAL'), user_data.get('quantity', 1), book_id)
             )
         
-        # Benutzer-spezifische Daten (inklusive Format, Besitz, Menge) wegspeichern
+        # 3. BEREINIGT: user_books enthält jetzt NUR noch die echten User-Zustände
         cursor.execute(
             """INSERT OR REPLACE INTO user_books 
-               (user_id, book_id, status, rating, format, ownership, quantity, started_at, finished_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (user_id, book_id, status, rating, started_at, finished_at) 
+               VALUES (?, ?, ?, ?, ?, ?)""",
             (user_id, book_id, user_data['status'], user_data['rating'], 
-             user_data.get('format', 'PHYSICAL'), user_data.get('ownership', 'OWNED'),
-             user_data.get('quantity', 1), user_data['started_at'], user_data['finished_at'])
+             user_data['started_at'], user_data['finished_at'])
         )
         conn.commit()
 
@@ -438,7 +446,7 @@ def lade_buecher_von_autor(user_id, autoren_name):
         cursor = conn.cursor()
         # Wir fügen b.published_date als 8. Feld (Index 7) hinzu
         cursor.execute("""
-            SELECT b.id, b.title, b.author, b.isbn_13, b.pages, ub.status, ub.rating, b.published_date, ub.ownership
+            SELECT b.id, b.title, b.author, b.isbn_13, b.pages, ub.status, ub.rating, b.published_date, b.ownership
             FROM books b
             JOIN user_books ub ON b.id = ub.book_id
             WHERE ub.user_id = ? AND b.author = ?
@@ -586,11 +594,44 @@ def schliesse_aktiven_zyklus_ab(user_id, book_id, end_datum=None):
         
     with get_connection() as conn:
         cursor = conn.cursor()
+        
+        # 1. Deinen bestehenden Zyklus updaten
         cursor.execute("""
             UPDATE reading_cycles 
             SET status = 'READ', finished_at = ? 
             WHERE user_id = ? AND book_id = ? AND status = 'READING'
         """, (end_datum, user_id, book_id))
+        
+        # 2. NEU: Jetzt auch die Haupttabelle für die Statistiken füttern
+        cursor.execute("""
+            UPDATE user_books 
+            SET status = 'READ', finished_at = ? 
+            WHERE user_id = ? AND book_id = ?
+        """, (end_datum, user_id, book_id))
+        
+        conn.commit()
+
+def initialisiere_reread_status(user_id, book_id):
+    """Beendet offene Zyklen, setzt das Startdatum auf heute und löscht das alte Enddatum."""
+    heute = datetime.now().strftime('%Y-%m-%d')
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. Alten Zyklus in reading_cycles ordnungsgemäß schließen, falls noch offen
+        cursor.execute("""
+            UPDATE reading_cycles 
+            SET status = 'READ', finished_at = ? 
+            WHERE user_id = ? AND book_id = ? AND status = 'READING'
+        """, (heute, user_id, book_id))
+        
+        # 2. In user_books den Status auf READING setzen, started_at eintragen und finished_at LEEREN
+        cursor.execute("""
+            UPDATE user_books 
+            SET status = 'READING', started_at = ?, finished_at = NULL 
+            WHERE user_id = ? AND book_id = ?
+        """, (heute, user_id, book_id))
+        
         conn.commit()
 
 def trage_lese_log_ein(user_id, book_id, neue_seite, datum_str=None):
@@ -676,6 +717,19 @@ def lade_beendete_zyklen(user_id, book_id):
             WHERE user_id = ? AND book_id = ? AND status = 'READ'
             ORDER BY id ASC -- <-- FIX: Älteste zuerst, damit die ID-Nummerierung stabil bleibt
         """, (user_id, book_id))
+        return cursor.fetchall()
+
+def lade_globales_logbuch_fuer_buch(book_id, user_id):
+    """Holt alle Leseprotokolle eines Buchs für das globale Logbuch."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT rl.log_date, rl.progress_page, rl.pages_read, rc.status
+            FROM reading_logs rl
+            JOIN reading_cycles rc ON rl.cycle_id = rc.id
+            WHERE rc.book_id = ? AND rc.user_id = ?
+            ORDER BY rl.log_date DESC, rl.progress_page DESC
+        """, (book_id, user_id))
         return cursor.fetchall()
 
 def loesche_reading_cycle_aus_db(cycle_id):
@@ -833,7 +887,6 @@ def lade_alle_genres(user_id):
         cursor.execute("SELECT id, name FROM genres WHERE user_id = ? ORDER BY name ASC", (user_id,))
         return cursor.fetchall()
 
-
 def speichere_genre_in_db(user_id, name):
     """Speichert ein neues Genre global in der Liste, wenn es nicht doppelt ist."""
     with get_connection() as conn:
@@ -844,7 +897,6 @@ def speichere_genre_in_db(user_id, name):
             return True
         except:
             return False  # Doppelter Eintrag (Unique-Constraint) abgefangen
-
 
 def loesche_genre_aus_db(genre_id):
     """Löscht ein Genre vollständig aus der globalen Liste. 
@@ -875,6 +927,35 @@ def lade_genres_eines_buches(book_id):
         """, (book_id,))
         return [row[0] for row in cursor.fetchall()]
 
+def lade_andere_user_mit_genres(aktuelle_user_id):
+    """Holt alle User, die nicht der aktuelle User sind und Genres besitzen."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT u.id, u.name 
+            FROM users u
+            JOIN genres g ON u.id = g.user_id
+            WHERE u.id != ?
+        """, (aktuelle_user_id,))
+        return cursor.fetchall()
+
+def kopiere_genres_von_user(von_user_id, zu_user_id):
+    """Kopiert die Genres eines Users zu einem anderen User, falls sie nicht existieren."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. Hole alle Genre-Namen des Quell-Users
+        cursor.execute("SELECT name FROM genres WHERE user_id = ?", (von_user_id,))
+        genres_quell_user = cursor.fetchall()
+        
+        # 2. Füge sie beim Ziel-User ein (UNIQUE Constraint verhindert Duplikate)
+        for (g_name,) in genres_quell_user:
+            cursor.execute("""
+                INSERT OR IGNORE INTO genres (user_id, name) 
+                VALUES (?, ?)
+            """, (zu_user_id, g_name))
+            
+        conn.commit()
 
 def aktualisiere_buch_genres(book_id, genre_namen_liste, user_id):
     """Löscht alle alten Zuordnungen des Buches und setzt die neuen Genres aus der Auswahl."""
@@ -915,14 +996,14 @@ def hole_genre_verteilung_stats(user_id):
         
 def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
     """
-    Holt ein zufälliges Buch (OWNED oder BORROWED) des Benutzers.
+    Holt ein zufälliges Buch (OWNED oder BORROWED) des Benutzers, das noch NICHT gelesen wurde.
     Falls das gezogene Buch Teil einer Reihe ist, wird automatisch das ERSTE 
     noch nicht gelesene Buch ('status' != 'READ') dieser Reihe zurückgegeben.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
         
-        # 1. BASIS-QUERY: Wir holen alle Bücher im Besitz/geliehen für die Vorauswahl
+        # 1. BASIS-QUERY: Wir holen nur UNGELESENE/ANGELESENE Bücher
         query = """
             SELECT b.id, b.title, b.is_series, b.series_name
             FROM books b
@@ -935,22 +1016,26 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
             query += """
                 JOIN book_genres bg ON b.id = bg.book_id
                 JOIN genres g ON bg.genre_id = g.id
-                WHERE ub.user_id = ? AND ub.ownership IN ('OWNED', 'BORROWED') AND g.name = ?
+                WHERE ub.user_id = ? 
+                  AND ub.status != 'READ' -- NEU: Bereits gelesene direkt ausschließen!
+                  AND b.ownership IN ('OWNED', 'BORROWED') -- REPARIERT: b.ownership statt ub.ownership
+                  AND g.name = ?
             """
             params.append(genre_name)
         else:
             query += """
-                WHERE ub.user_id = ? AND ub.ownership IN ('OWNED', 'BORROWED')
+                WHERE ub.user_id = ? 
+                  AND ub.status != 'READ' -- NEU: Bereits gelesene direkt ausschließen!
+                  AND b.ownership IN ('OWNED', 'BORROWED')
             """
             
         cursor.execute(query, params)
         alle_buecher = cursor.fetchall()
         
-        # Falls der Bestand (oder das Genre) komplett leer ist
         if not alle_buecher:
             return None
             
-        # 2. ZUFALLS-POOL: Ein Buch blind aus dem Pool ziehen
+        # 2. ZUFALLS-POOL: Ein garantiert ungelesenes Buch blind ziehen
         zufalls_buch = random.choice(alle_buecher)
         b_id, b_title, is_series, series_name = zufalls_buch
         
@@ -965,11 +1050,9 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
             """, (user_id, series_name))
             reihen_buecher = cursor.fetchall()
             
-            # Wir gehen die Reihe von Band 1 aufwärts durch und suchen das erste ungelesene Buch
             for rb in reihen_buecher:
                 rb_id, rb_title, _, rb_status = rb
                 if rb_status != 'READ':
-                    # Gefunden! Wir überschreiben unseren Vorschlag mit dem korrekten Band
                     return {
                         'id': rb_id, 
                         'title': rb_title, 
@@ -978,12 +1061,11 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
                         'genres': lade_genres_eines_buches(rb_id)
                     }
                     
-        # Wenn es keine Reihe ist oder bereits alle Bände der Reihe gelesen wurden,
-        # bleibt es beim ursprünglich gezogenen Buch.
+        # Wenn es keine Reihe ist, bleibt es beim gezogenen, ungelesenen Buch.
         return {
             'id': b_id, 
             'title': b_title, 
             'is_series': False, 
             'series_name': None,
             'genres': lade_genres_eines_buches(b_id)
-        }   
+        }

@@ -20,7 +20,7 @@ def detailseite(b_id: int):
             ui.button(t('back_to_shelf'), on_click=lambda: ui.navigate.to('/')).classes('mt-4 bg-slate-600 text-white')
         return
 
-    # Alle Felder entpacken
+    # REPARIERT: Variablen-Zuordnung exakt nach dem SELECT deiner lade_buecher_aus_db angepasst!
     (
         book_id, title, author, isbn_13, pages, 
         status, rating, special, is_series, s_name, s_num, 
@@ -37,7 +37,6 @@ def detailseite(b_id: int):
     quantity = quantity if quantity is not None else 1
     gesamt_seiten = pages or 1
     
-    # Reaktiver Seitenzustand entkoppelt das UI vom Render-Timing
     seiten_status = {
         'aktueller_status': status,
         'rating': rating
@@ -46,7 +45,6 @@ def detailseite(b_id: int):
     author_id = None
     if author:
         author_id = database.hole_autoren_id_durch_name(layout.aktiver_user_id, author)
-
 
     buch_genres = database.lade_genres_eines_buches(b_id)
 
@@ -59,7 +57,6 @@ def detailseite(b_id: int):
     # --- LIVE SPEICHERFUNKTION ---
     def inline_speichern(neuer_status=None, neuer_rating_wert=None):
         """Speichert Status und Bewertung live und aktualisiert alle UI-Zonen."""
-        # WICHTIG: Erlaubt uns, die oben entpackten Variablen 'start' und 'end' direkt zu verändern
         nonlocal start, end  
 
         if neuer_status is not None:
@@ -73,18 +70,18 @@ def detailseite(b_id: int):
 
         if aktueller_typ == 'READ':
             if not end:
-                end = heute_iso  # Beendet-Datum setzen, falls leer
+                end = heute_iso  
             if not start:
-                start = heute_iso # Falls das Buch direkt (ohne READING) beendet wurde
+                start = heute_iso 
         elif aktueller_typ == 'READING':
             if not start:
-                start = heute_iso # Start-Datum setzen, wenn das Lesen beginnt
-            end = ""  # Beendet-Datum löschen, falls das Buch wieder reaktiviert wurde
+                start = heute_iso 
+            end = ""  
         elif aktueller_typ == 'UNREAD':
             start = ""
             end = ""
 
-        # Die bereinigten Daten werden nun an die DB übergeben
+        # REPARIERT: Dictionaries passend für deine neue speichere_buch_in_db Funktion aufgebaut
         aktuelle_book_data = {
             'title': title, 'subtitle': subtitle, 'author': author,
             'translator': translator, 'narrator': narrator, 'illustrator': illustrator, 'editor': editor,
@@ -119,12 +116,12 @@ def detailseite(b_id: int):
                 on_click=lambda: ui.run_javascript('window.history.back()')
             ).props('flat dense').classes('text-slate-500 dark:text-slate-400 mb-4')
         
-        with ui.element('div').classes('w-full max-w-4xl mx-auto flex flex-col md:flex-row gap-8 items-start'):
+        with ui.row().classes('w-full max-w-4xl mx-auto flex flex-col md:flex-row gap-8 items-start'):
             
             # =========================================================================
             # --- LINKE SPALTE: COVER & REINE TEXT-INFOS + STATUS-SELECT ---
             # =========================================================================
-            with ui.element('div').classes('w-full md:w-1/3 flex flex-col gap-4'):
+            with ui.column().classes('w-full md:w-1/3 flex flex-col gap-4'):
                 
                 cover_pfad = database.hole_cover_url(book_id)
                 
@@ -132,7 +129,7 @@ def detailseite(b_id: int):
                     if cover_pfad != "/covers/placeholder.jpg":
                         ui.image(cover_pfad).classes('w-full h-full object-cover')
                     else:
-                        with ui.element('div').classes('flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500'):
+                        with ui.column().classes('flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500'):
                             ui.icon('book', size='xl')
                             ui.label(t('no_cover')).classes('text-xs font-medium')
 
@@ -146,14 +143,20 @@ def detailseite(b_id: int):
                     galerie_container = ui.element('div').classes('w-full')
                     
                     async def bild_waehlen(url):
+                        # 1. Den Client-Kontext sichern, BEVOR wir Elemente löschen/schließen
+                        aktueller_client = ui.context.client
+                        
                         search_dialog.close()
                         ui.notify(t('book_notify_saving_cover'), type='info')
                         
-                        erfolg = database.lade_und_speichere_cover(book_id, url)
+                        # 2. Das langwierige Speichern blockiert jetzt nicht mehr den UI-Kontext
+                        erfolg = await asyncio.to_thread(database.lade_und_speichere_cover, book_id, url)
+                        
                         if erfolg:
                             ui.notify(t('book_notify_cover_updated'), type='positive')
-                            await asyncio.sleep(0.5)
-                            ui.navigate.to(f'/book/{book_id}')
+                            await asyncio.sleep(0.2)
+                            # 3. REPARIERT: change_page() statt navigate.to() nutzen!
+                            aktueller_client.change_page(f'/book/{book_id}')
                         else:
                             ui.notify(t('book_notify_cover_error'), type='negative')
 
@@ -272,11 +275,10 @@ def detailseite(b_id: int):
             # =========================================================================
             # --- RECHTE SPALTE: TITELZEILE & METADATEN ---
             # =========================================================================
-            with ui.element('div').classes('flex-1 flex flex-col gap-4 w-full'):
+            with ui.column().classes('flex-1 flex flex-col gap-4 w-full'):
                 
                 with ui.row().classes('w-full justify-between items-start no-wrap gap-4'):
-                    # --- LINKER TEIL: TEXTINFOS & STERNE ---
-                    with ui.element('div').classes('flex flex-col gap-1 flex-1 items-start'):
+                    with ui.column().classes('flex flex-col gap-1 flex-1 items-start'):
                         ui.label(title).classes('text-3xl font-bold text-slate-800 dark:text-slate-100 leading-tight')
                         if subtitle:
                             ui.label(subtitle).classes('text-lg text-slate-500 dark:text-slate-400 font-medium')
@@ -289,7 +291,6 @@ def detailseite(b_id: int):
                         else:
                             ui.label(author or t('unknown_author')).classes('text-xl text-slate-600 dark:text-slate-300 italic mt-1 inline-block')
                         
-                        # Interaktive Sterne-Bewertung
                         @ui.refreshable
                         def sterne_bereich_refresh():
                             with ui.row().classes('items-center gap-0.5 mt-1'):
@@ -303,7 +304,6 @@ def detailseite(b_id: int):
                                         .props('flat round dense size=sm').classes(f'{star_color} transition-colors')
                         sterne_bereich_refresh()
                     
-                    # --- RECHTER TEIL: REINE AKTIONS-BUTTONS ---
                     with ui.row().classes('items-center gap-1 shrink-0'):
                         if isbn_13 and (not description or not publisher or pages <= 1 or not s_name):
                             async def metadaten_blitz_update():
@@ -326,7 +326,6 @@ def detailseite(b_id: int):
                             .props('flat round dense text-color=blue-600').classes('text-blue-600 dark:text-blue-400') \
                             .tooltip(t('edit_book'))
                         
-                        # Bücher-Löschen Popup
                         def aktion_loeschen():
                             user_ui_delete = database.lade_user_settings(layout.aktiver_user_id)
                             is_dark_delete = user_ui_delete['dark_mode']
@@ -369,7 +368,7 @@ def detailseite(b_id: int):
                         ui.icon('local_offer', size='xs').classes('text-slate-400 dark:text-slate-500 mr-0.5')
                         for genre_name in buch_genres:
                             ui.badge(genre_name, color='slate').classes('text-[10px] font-medium px-2 py-0.5 rounded-md dark:bg-slate-700 dark:text-slate-200')
-                        ui.separator().classes('my-2 dark:bg-slate-700')
+                    ui.separator().classes('my-2 dark:bg-slate-700')
 
                 # --- METADATEN-BLOCK ---
                 formatiertes_datum = translations.format_localized_date(published_date)
@@ -391,17 +390,11 @@ def detailseite(b_id: int):
                 if is_series and s_name:
                     with ui.row().classes('w-full mt-2 p-3 bg-blue-50/50 dark:bg-slate-800 rounded border border-blue-100 dark:border-blue-900/50 items-center text-sm text-blue-800 dark:text-blue-300 font-medium no-wrap gap-1'):
                         ui.icon('layers').classes('text-blue-500 dark:text-blue-400 mr-1')
-                        
-                        # Statischer Präfix (z. B. "Reihe:")
                         ui.label(f"{t('series_name')}:")
-                        
-                        # REPARIERT: Der Reihenname als klickbarer Link zur Reihen-Detailseite
                         ui.label(s_name) \
                             .classes('cursor-pointer text-blue-600 dark:text-blue-400 hover:underline transition-all font-bold') \
                             .on('click', lambda name=s_name: ui.navigate.to(f'/series/{name}')) \
                             .tooltip(t('view_series') if 'view_series' in translations.TRANSLATIONS[translations.aktuelle_sprache] else 'Reihe anzeigen')
-                        
-                        # Die Bandnummer (z. B. "(Band 2)") als normaler Text dahinter
                         ui.label(f"({t('series_volume')} {s_num or 0})").classes('text-slate-500 dark:text-slate-400 pl-1')
 
                 ui.separator().classes('my-4 dark:bg-slate-700')
@@ -429,7 +422,6 @@ def detailseite(b_id: int):
                         
                         with ui.card().classes(f'w-full p-4 shadow-sm mb-4 {bg_card}'):
                             ui.label(t('book_track_progress_title')).classes(f'text-sm font-bold mb-1 {text_label}')
-                            
                             ui.linear_progress(value=prozent, color='emerald', show_value=False).classes('w-full my-2 h-2 rounded')
                             ui.label(f"{t('book_current_on_page')} {letzte_seite} {t('book_of_pages')} {gesamt_seiten} ({int(prozent*100)}%)").classes(f'text-xs mb-3 {text_sub}')
                             
@@ -458,7 +450,7 @@ def detailseite(b_id: int):
                             if logs:
                                 ui.separator().classes('my-2 dark:bg-slate-700')
                                 ui.label(t('book_logbook_current_cycle')).classes(f'text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2')
-                                with ui.element('div').classes('w-full max-h-40 overflow-y-auto flex flex-col gap-1.5'):
+                                with ui.column().classes('w-full max-h-40 overflow-y-auto flex flex-col gap-1.5'):
                                     for l_date, p_page, p_read in logs:
                                         with ui.row().classes(f'w-full justify-between items-center text-xs p-2 rounded border shadow-sm no-wrap gap-2 {bg_log_row}'):
                                             with ui.row().classes('items-center gap-3'):
@@ -481,18 +473,9 @@ def detailseite(b_id: int):
                             ui.label(t('book_already_read_subtitle')).classes(f'text-xs max-w-sm {text_sub}')
                             
                             async def reread_starten():
-                                with database.get_connection() as conn:
-                                    cursor = conn.cursor()
-                                    heute = datetime.now().strftime('%Y-%m-%d')
-                                    cursor.execute("""
-                                        UPDATE reading_cycles 
-                                        SET status = 'READ', finished_at = ? 
-                                        WHERE user_id = ? AND book_id = ? AND status = 'READING'
-                                    """, (heute, layout.aktiver_user_id, book_id))
-                                    conn.commit()
-                                
-                                inline_speichern(neuer_status='READING')
+                                database.initialisiere_reread_status(layout.aktiver_user_id, book_id)
                                 ui.notify(t('book_notify_reread_started'), type='info')
+                                ui.navigate.to(f'/book/{book_id}')
 
                             ui.button(t('book_btn_reread'), icon='replay', on_click=reread_starten) \
                                 .classes('bg-emerald-600 text-white mt-1 px-4 text-xs font-semibold py-1.5 rounded shadow')
@@ -507,7 +490,7 @@ def detailseite(b_id: int):
                                 ui.icon('history', size='sm').classes('text-blue-500 dark:text-blue-400')
                                 ui.label(t('book_past_cycles_title')).classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
                             
-                            with ui.element('div').classes('w-full flex flex-col gap-2 mt-1'):
+                            with ui.column().classes('w-full flex flex-col gap-2 mt-1'):
                                 for index, (cyc_id, s_at, f_at, r_cycle) in enumerate(beendete_zyklen, 1):
                                     with ui.row().classes(f'w-full justify-between items-center text-xs p-2.5 rounded border shadow-xs no-wrap gap-2 {bg_log_row}'):
                                         with ui.element('div').classes('flex flex-col gap-0.5'):
@@ -523,7 +506,6 @@ def detailseite(b_id: int):
                                             async def zyklus_loeschen(target_id=cyc_id):
                                                 with ui.dialog() as confirm_dial, ui.card().classes(f'p-4 {bg_card}').props(f'{dark_prop_fresh}'):
                                                     ui.label(t('book_confirm_cycle_delete')).classes('text-sm mb-4')
-                                                    
                                                     with ui.row().classes('w-full justify-end gap-2'):
                                                         ui.button(t('cancel'), on_click=confirm_dial.close).props('flat').classes('text-slate-500')
                                                         
@@ -533,14 +515,13 @@ def detailseite(b_id: int):
                                                                 ui.notify(t('book_notify_cycle_removed'), type='info')
                                                                 tracking_zone_refresh.refresh()
                                                                 globales_logbuch_refresh.refresh()
-                                                        
                                                         ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
                                                 confirm_dial.open()
 
                                             ui.button(icon='delete', on_click=zyklus_loeschen).props('flat round dense size=sm').classes('text-slate-400 hover:text-red-500')
                 tracking_zone_refresh()
 
-                # --- GLOBALER LESESTAND / LOGBUCH ALS COLLAPSIBLE ---
+                # --- GLOBALER LESESTAND / LOGBUCH ---
                 @ui.refreshable
                 def globales_logbuch_refresh():
                     user_ui_fresh = database.lade_user_settings(layout.aktiver_user_id)
@@ -548,16 +529,8 @@ def detailseite(b_id: int):
                     bg_log_row = 'bg-slate-900 border-slate-700 text-slate-200' if is_dark_fresh else 'bg-white border-slate-100 text-slate-700'
                     text_sub = 'text-slate-400' if is_dark_fresh else 'text-slate-500'
                     
-                    with database.get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            SELECT rl.log_date, rl.progress_page, rl.pages_read, rc.status
-                            FROM reading_logs rl
-                            JOIN reading_cycles rc ON rl.cycle_id = rc.id
-                            WHERE rc.book_id = ? AND rc.user_id = ?
-                            ORDER BY rl.log_date DESC, rl.progress_page DESC
-                        """, (book_id, layout.aktiver_user_id))
-                        alle_logs = cursor.fetchall()
+                    # REPARIERT: Rohe SQL-Abfrage ausgelagert in eine saubere database.py Funktion!
+                    alle_logs = database.lade_globales_logbuch_fuer_buch(book_id, layout.aktiver_user_id)
 
                     with ui.expansion(t('book_view_logbook'), icon='auto_stories').classes('w-full border rounded-lg bg-slate-100/30 dark:bg-slate-900/10 dark:border-slate-700/50 mt-4'):
                         if not alle_logs:

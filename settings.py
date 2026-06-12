@@ -494,6 +494,7 @@ def einstellungen_seite():
             with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
                 ui.label(t('manage_genres')).classes(f'text-lg font-bold {text_main} mb-2')
                 
+                # --- Eigenes Genre hinzufügen ---
                 with ui.row().classes('w-full items-center gap-3 no-wrap mb-4'):
                     neues_genre_input = ui.input(label=t('genre_name')).classes('flex-1 px-1').props(f'outlined dense {dark_prop}')
                     async def genre_speichern():
@@ -509,9 +510,34 @@ def einstellungen_seite():
                             ui.notify(t('error_genre_exists'), type='negative')
                     ui.button(icon='add', on_click=genre_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
 
+                # --- NEU: INTEGRATION GENRE-IMPORT (Auswahl anderer Nutzer) ---
+                andere_user = database.lade_andere_user_mit_genres(layout.aktiver_user_id)
+                if andere_user:
+                    with ui.element('div').classes('w-full p-3 rounded border border-dashed border-slate-300 dark:border-slate-700 mb-4 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col gap-2'):
+                        ui.label('Aus Profil kopieren:').classes(f'text-xs font-bold uppercase tracking-wider {text_sub}')
+                        
+                        with ui.row().classes('w-full items-center gap-3 no-wrap'):
+                            user_opts = {u_id: u_name for u_id, u_name in andere_user}
+                            user_auswahl = ui.select(
+                                options=user_opts, 
+                                label='Nutzer wählen'
+                            ).classes('flex-1 max-w-xs px-1').props(f'outlined dense {dark_prop}')
+                            
+                            async def import_starten():
+                                if not user_auswahl.value:
+                                    ui.notify('Bitte wähle zuerst einen Nutzer aus!', type='warning')
+                                    return
+                                database.kopiere_genres_von_user(user_auswahl.value, layout.aktiver_user_id)
+                                ui.notify('Genres erfolgreich importiert! 🎉', type='positive')
+                                user_auswahl.value = None
+                                genre_liste_refresh.refresh()  # Aktualisiert sofort die Pill-Anzeige darunter!
+                            
+                            ui.button(icon='download', on_click=import_starten).classes('bg-blue-600 text-white p-2.5 rounded shadow-sm').tooltip('Genres importieren')
+
                 ui.separator().classes('my-4 dark:bg-slate-700')
                 ui.label(t('existing_genres')).classes(f'text-sm font-bold mb-2 {text_sub}')
                 
+                # --- Bestehende Genres (Pills) ---
                 @ui.refreshable
                 def genre_liste_refresh():
                     genres = database.lade_alle_genres(layout.aktiver_user_id)
@@ -534,8 +560,8 @@ def einstellungen_seite():
                                             ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
                                     dialog.open()
                                 ui.button(icon='close', on_click=genre_loeschen_klick).props('round dense flat size=sm').classes('text-red-500 hover:bg-red-900/30')
+                
                 genre_liste_refresh()
-
 
             # ==========================================
             # SEKTION 4: DATEI-IMPORT
