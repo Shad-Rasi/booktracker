@@ -6,7 +6,7 @@ import random
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = Path("data/db2.db")
+DB_PATH = Path("data/database.db")
 DB_PATH.parent.mkdir(exist_ok=True)
 
 def get_connection():
@@ -157,7 +157,7 @@ def init_db():
         # Standard-User anlegen
         cursor.execute("SELECT COUNT(*) FROM users")
         if cursor.fetchone()[0] == 0:
-            cursor.execute("INSERT INTO users (name) VALUES (?)", ("Shadrasi",))
+            cursor.execute("INSERT INTO users (name) VALUES (?)", ("Booktracker User",))
             
         # Standard-Regale anlegen
         cursor.execute("SELECT COUNT(*) FROM locations")
