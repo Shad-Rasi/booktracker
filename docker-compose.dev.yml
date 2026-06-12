@@ -1,13 +1,13 @@
 services:
   booktracker:
     build: .
-    container_name: booktracker
+    container_name: booktracker_dev
     ports:
       - "8080:8080"
     volumes:
+      - .:/app
       - ./data:/app/data
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
-    restart: unless-stopped

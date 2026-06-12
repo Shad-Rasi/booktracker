@@ -304,4 +304,10 @@ def hauptseite():
 
         ui.context.client.on_connect(initialisiere_scroll_stand)
 
-ui.run(port=8080, title="Booktracker", favicon="📚", reload=True, storage_secret="dein_sicheres_geheimnis_hier")
+ui.run(
+    port=int(os.getenv("PORT", 8080)),
+    title="Booktracker",
+    favicon="📚",
+    reload=False,
+    storage_secret=os.getenv("STORAGE_SECRET", "change_me_in_production"),
+)
