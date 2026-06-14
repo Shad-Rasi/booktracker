@@ -2,7 +2,6 @@ name: Build and Push Docker Image
 
 on:
   push:
-    # Der Automat läuft immer los, wenn du einen "Release-Tag" pushst (z.B. v1.2.0)
     tags:
       - 'v*.*.*'
 
@@ -24,7 +23,6 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/booktracker
-          # Das sorgt dafür, dass er automatisch die Git-Versionsnummer als Tag nutzt
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
@@ -34,5 +32,5 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ id.meta.outputs.tags }}
-          labels: ${{ id.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }} # REPARIERT: steps statt id
+          labels: ${{ steps.meta.outputs.labels }} # REPARIERT: steps statt id
