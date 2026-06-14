@@ -1,0 +1,38 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    # Der Automat läuft immer los, wenn du einen "Release-Tag" pushst (z.B. v1.2.0)
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: Bei Docker Hub anmelden
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker Meta-Daten extrahieren
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/booktracker
+          # Das sorgt dafür, dass er automatisch die Git-Versionsnummer als Tag nutzt
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Docker Image bauen und pushen
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ id.meta.outputs.tags }}
+          labels: ${{ id.meta.outputs.labels }}
