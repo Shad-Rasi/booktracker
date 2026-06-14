@@ -13,6 +13,13 @@ app.add_static_files('/covers', COVER_DIR, follow_symlink=True)
 app.add_static_files('/authors', AUTHOR_DIR, follow_symlink=True)
 app.add_static_files('/static', 'static')
 ui.add_head_html('<link rel="icon" type="image/png" href="/static/favicon.png">', shared=True)
+# NEU: Das PWA-Manifest laden
+ui.add_head_html('<link rel="manifest" href="/static/manifest.json">', shared=True)
+
+# NEU: Extra-Support für Apple iOS (Safari), damit das Icon auch dort sofort greift
+ui.add_head_html('<link rel="apple-touch-icon" href="/static/app-icon.png">', shared=True)
+ui.add_head_html('<meta name="apple-mobile-web-app-capable" content="yes">', shared=True)
+ui.add_head_html('<meta name="apple-mobile-web-app-status-bar-style" content="default">', shared=True)
 
 for route in app.routes:
     if route.path in ['/covers', '/authors'] and isinstance(route.app, StaticFiles):
