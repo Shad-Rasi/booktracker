@@ -6,12 +6,12 @@ A self-hosted tracker for your physical book library — including reading stats
 
 ## Features
 
-- Track your physical book collection with status (reading, read, wishlist, given away)
-- Automatic book metadata & cover lookup via Google Books and OpenLibrary
+- Track your physical book collection with status (reading, read, given away)
+- Automatic book metadata & cover lookup via Google Books and OpenLibrary and isbn.de (good resource for german books)
 - Personal reading statistics with charts
 - PDF reading report export
 - Multiple users
-- Genres and shelf locations
+- Genres and shelf management
 - English and German UI
 
 ## Quick Start (Docker)
