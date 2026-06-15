@@ -118,7 +118,7 @@ def detailseite(b_id: int):
                 aktueller_client = ui.context.client
                 search_dialog.close()
                 ui.notify(t('book_notify_saving_cover'), type='info')
-                erfolg = await asyncio.to_thread(database.lade_and_speichere_cover, book_id, url)
+                erfolg = await asyncio.to_thread(database.lade_und_speichere_cover, book_id, url)
                 if erfolg:
                     ui.notify(t('book_notify_cover_updated'), type='positive')
                     await asyncio.sleep(0.2)
@@ -151,6 +151,7 @@ def detailseite(b_id: int):
 
         with ui.dialog() as upload_dialog, ui.card().classes('p-6 w-96 flex flex-col gap-4').style(style_dialog_card):
             ui.label(t('book_upload_change_cover')).classes('text-lg font-bold text-slate-700 dark:text-slate-100')
+            cover_container = ui.element('div')
             ui.upload(label=t('book_select_image_label'), auto_upload=True, on_upload=lambda e: cover_verarbeiten(e, upload_dialog, cover_container)).props(f'accept=image/* max-files=1 {dialog_prop}').classes('w-full')
             ui.button(t('cancel'), on_click=upload_dialog.close).classes('bg-slate-400 dark:bg-slate-600 text-white w-full')
 
