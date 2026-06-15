@@ -20,11 +20,9 @@ def buch_bearbeiten(book_id: int):
     all_books = database.lade_buecher_aus_db(layout.aktiver_user_id)
     aktuelles_buch = next((b for b in all_books if b[0] == book_id), None)
     
-    # Sicherheitsgurt: Falls durch den Hot-Reload der User-Kontext kurz verwirrt ist
     if not aktuelles_buch:
         with basis_layout('edit_book'):
             ui.label('Buch wird geladen...').classes('italic text-slate-400')
-            # Erzwingt den Sprung zur Hauptseite, um das Layout-Gedächtnis zu füttern
             ui.navigate.to('/') 
         return
         
@@ -35,14 +33,10 @@ def formular_rendern(edit_id=None, daten=None):
     ist_edit = edit_id is not None
     regale = database.lade_alle_regale()
     
-    # NEU: Alle globalen Genres für das Dropdown laden
     globale_genres = database.lade_alle_genres(layout.aktiver_user_id)
     genre_liste_auswahl = [g[1] for g in globale_genres]
-    
-    # NEU: Bereits verknüpfte Genres des Buches holen (wenn wir im Edit-Modus sind)
     bereits_zugeordnete_genres = database.lade_genres_eines_buches(edit_id) if ist_edit else []
     
-    # 1. DARKMODE-ZUSTAND ERMITTLEN & PROPS VORBEREITEN
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']
     
@@ -55,7 +49,6 @@ def formular_rendern(edit_id=None, daten=None):
     text_sub = 'text-slate-400' if is_dark else 'text-slate-500'
     text_switch = 'text-slate-200' if is_dark else 'text-slate-700'
     
-    # Daten aus dem DB-Tuple entpacken mit festen Fallbacks
     db_titel = daten[1] if daten else ""
     db_autor = daten[2] if daten else ""
     db_isbn = daten[3] if daten else ""
@@ -135,10 +128,7 @@ def formular_rendern(edit_id=None, daten=None):
             'finished_at': end_date_input.value if end_date_input.value else ""
         }
         
-        # 1. Das Buch in der books/user_books speichern
         ziel_id = database.speichere_buch_in_db(edit_id, layout.aktiver_user_id, book_data, user_data)
-        
-        # 2. NEU: Die n:m Genres sicher übergeben (Nutzt die ermittelte ID)
         aktive_book_id = edit_id if ist_edit else ziel_id
         ausgewaehlte_genres = [name for name, cb in genre_checkboxes.items() if cb.value]
         database.aktualisiere_buch_genres(aktive_book_id, ausgewaehlte_genres, layout.aktiver_user_id)
@@ -149,94 +139,85 @@ def formular_rendern(edit_id=None, daten=None):
     titel_key = 'edit_book' if ist_edit else 'add_book'
     
     with basis_layout(titel_key):
-        with ui.element('div').classes('w-full max-w-4xl mx-auto mb-12 flex flex-col gap-6'):
+        # OPTIMIERT: px-4 auf Mobile verhindert, dass die Cards an den Displayrand klatschen
+        with ui.element('div').classes('w-full max-w-4xl mx-auto mb-20 px-4 flex flex-col gap-6 content-safe'):
             ui.label(t(titel_key)).classes(f'text-2xl font-bold {text_main}')
             
             # =========================================================================
-            # BLOCK 1: HARTE BUCHFAKTEN & INFORMATIONEN (OBEN)
+            # BLOCK 1: HARTE BUCHFAKTEN & INFORMATIONEN
             # =========================================================================
-            with ui.card().classes(f'w-full p-6 border shadow-xs flex flex-col gap-4 {bg_card}'):
-                ui.label(t('section_book_info')).classes(f'text-sm font-bold uppercase tracking-wider {text_sub} mb-2')
+            with ui.card().classes(f'w-full p-4 sm:p-6 border shadow-xs flex flex-col gap-4 {bg_card}'):
+                ui.label(t('section_book_info')).classes(f'text-sm font-bold uppercase tracking-wider {text_sub} mb-1')
                 
-                # ISBN-Suche
-                with ui.row().classes('w-full items-center gap-4'):
+                # ISBN-Suche (Optimiert: Flex-col auf Mobile, Button w-full)
+                with ui.row().classes('w-full items-center gap-2 flex-col sm:flex-row flex-nowrap'):
                     if not ist_edit:
-                        isbn_input = ui.input(label=t('isbn_label'), value=db_isbn).classes('w-64 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                        search_btn = ui.button(t('search')).classes('bg-blue-600 hover:bg-blue-500 text-white px-4 h-[40px] rounded')
+                        isbn_input = ui.input(label=t('isbn_label'), value=db_isbn).classes('w-full sm:w-64 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                        search_btn = ui.button(t('search')).classes('w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-4 h-[40px] rounded')
                     else:
-                        isbn_input = ui.input(label='ISBN 13', value=db_isbn).classes('w-64 dark:bg-slate-900').props(f'outlined dense readonly {dark_prop}')
+                        isbn_input = ui.input(label='ISBN 13', value=db_isbn).classes('w-full sm:w-64 dark:bg-slate-900').props(f'outlined dense readonly {dark_prop}')
 
-                # Titel & Untertitel
-                with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
-                    titel_input = ui.input(label=t('title'), value=db_titel).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                    subtitle_input = ui.input(label=t('subtitle'), value=db_subtitle).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                # Titel & Untertitel (Optimiert: flex-col auf Mobile)
+                with ui.row().classes('w-full gap-4 flex-col md:flex-row md:flex-nowrap'):
+                    titel_input = ui.input(label=t('title'), value=db_titel).classes('w-full md:flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    subtitle_input = ui.input(label=t('subtitle'), value=db_subtitle).classes('w-full md:flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
                 
-                # Autor & Verlag
-                with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
-                    autor_input = ui.input(label=t('author'), value=db_autor).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                    publisher_input = ui.input(label=t('publisher'), value=db_publisher).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                # Autor & Verlag (Optimiert: flex-col auf Mobile)
+                with ui.row().classes('w-full gap-4 flex-col md:flex-row md:flex-nowrap'):
+                    autor_input = ui.input(label=t('author'), value=db_autor).classes('w-full md:flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    publisher_input = ui.input(label=t('publisher'), value=db_publisher).classes('w-full md:flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
 
-                # Kennzahlen (Seiten, ISBN10, Jahr, Sprache) + NEU: GENRE SELECTION
-                with ui.row().classes('w-full items-center gap-4 mt-1 flex-wrap'):
-                    seiten_input = ui.number(label=t('pages'), value=db_seiten, format='%d').classes('w-24 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                    isbn_10_input = ui.input(label='ISBN 10', value=db_isbn_10).classes('w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                    pub_date_input = ui.input(label=t('published_date'), value=db_published_date).classes('w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                # Kennzahlen (Optimiert: flex-row mit flex-wrap, Boxen nutzen mobilen Platz besser aus)
+                with ui.row().classes('w-full items-center gap-3 mt-1 flex-wrap'):
+                    seiten_input = ui.number(label=t('pages'), value=db_seiten, format='%d').classes('flex-1 min-w-[80px] sm:w-24 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    isbn_10_input = ui.input(label='ISBN 10', value=db_isbn_10).classes('flex-1 min-w-[130px] sm:w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                    pub_date_input = ui.input(label=t('published_date'), value=db_published_date).classes('flex-1 min-w-[130px] sm:w-36 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
                     
-                    sprach_optionen = {
-                        'de': t('lang_de'), 
-                        'en': t('lang_en'), 
-                        'fr': 'Français', 'es': 'Español', 'it': 'Italiano'
-                    }
-                    lang_input = ui.select(options=sprach_optionen, value=db_language, label=t('language')).classes('w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    sprach_optionen = {'de': t('lang_de'), 'en': t('lang_en'), 'fr': 'Français', 'es': 'Español', 'it': 'Italiano'}
+                    lang_input = ui.select(options=sprach_optionen, value=db_language, label=t('language')).classes('flex-1 min-w-[130px] sm:w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
                     
-                    # =========================================================================
-                    # REPARIERT: Keine Abstürze mehr – Genres via Grid-Checkboxes (natively safe)
-                    # =========================================================================
+                    # Genres (Wechselt mobil auf 1 Spalte, Tablet 2, Desktop 3)
                     with ui.expansion(t('manage_genres'), icon='local_offer').classes('w-full border rounded-lg bg-slate-100/50 dark:bg-slate-900/30 dark:border-slate-700/50'):
                         with ui.element('div').classes('p-4 w-full'):
-                            # Ein 3-spaltiges Raster für die Checkboxen (wächst dynamisch mit)
-                            with ui.grid().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3') as genre_grid:
+                            with ui.grid().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3'):
                                 genre_checkboxes = {}
                                 for g_name in genre_liste_auswahl:
-                                    # Prüfen, ob das Buch dieses Genre bereits besitzt
                                     ist_gehakt = g_name in bereits_zugeordnete_genres
-                                    
-                                    # Checkbox generieren und im Dict merken
                                     cb = ui.checkbox(g_name, value=ist_gehakt).classes('text-sm font-medium')
                                     genre_checkboxes[g_name] = cb
                     
-                    special_checkbox = ui.checkbox(t('special'), value=db_special).classes(f'ml-2 {text_switch}')
+                    special_checkbox = ui.checkbox(t('special'), value=db_special).classes(f'w-full sm:w-auto ml-2 {text_switch}')
 
-                # Format, Besitzstatus, Menge & Lagerort
-                with ui.row().classes('w-full items-center gap-4 flex-wrap mt-1'):
+                # Format, Besitzstatus, Menge & Lagerort (Optimiert: flex-wrap für mobile Bildschirme)
+                with ui.row().classes('w-full items-center gap-3 flex-wrap mt-1'):
                     format_options = {'PHYSICAL': t('PHYSICAL'), 'AUDIOBOOK': t('AUDIOBOOK'), 'EBOOK': t('EBOOK')}
-                    format_input = ui.select(options=format_options, value=db_format, label=t('format')).classes('w-40 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    format_input = ui.select(options=format_options, value=db_format, label=t('format')).classes('flex-1 min-w-[140px] sm:w-40 dark:bg-slate-900').props(f'outlined dense {select_prop}')
                     
                     ownership_options = {'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT'), 'GIVEN_AWAY': t('ownership_given_away')}
-                    ownership_input = ui.select(options=ownership_options, value=db_ownership, label=t('ownership')).classes('w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    ownership_input = ui.select(options=ownership_options, value=db_ownership, label=t('ownership')).classes('flex-1 min-w-[140px] sm:w-36 dark:bg-slate-900').props(f'outlined dense {select_prop}')
                     
                     quantity_input = ui.number(label=t('quantity'), value=db_quantity, format='%d').classes('w-20 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
                     
                     regale_options = {r[0]: r[1] for r in regale}
-                    location_input = ui.select(options=regale_options, value=db_location_id, label=t('location')).classes('w-56 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    location_input = ui.select(options=regale_options, value=db_location_id, label=t('location')).classes('flex-1 min-w-[200px] sm:w-56 dark:bg-slate-900').props(f'outlined dense {select_prop}')
 
-                # --- COLLAPSIBLE FÜR MITWIRKENDE ---
+                # Mitwirkende Expandable (Optimiert: Zeilenstruktur flex-col)
                 with ui.row().classes('w-full'):
-                    with ui.expansion(t('contributors')).classes(f'w-full border rounded-lg bg-slate-100/50 dark:bg-slate-900/30 dark:border-slate-700/50'):
+                    with ui.expansion(t('contributors'), icon='people').classes(f'w-full border rounded-lg bg-slate-100/50 dark:bg-slate-900/30 dark:border-slate-700/50'):
                         with ui.column().classes('w-full p-4 gap-4'):
-                            with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
-                                translator_input = ui.input(label=t('translator'), value=db_translator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                                narrator_input = ui.input(label=t('narrator'), value=db_narrator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                            with ui.row().classes('w-full gap-4 no-wrap flex-wrap sm:flex-nowrap'):
-                                illustrator_input = ui.input(label=t('illustrator'), value=db_illustrator).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
-                                editor_input = ui.input(label=t('editor'), value=db_editor).classes('flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                            with ui.row().classes('w-full gap-4 flex-col sm:flex-row sm:flex-nowrap'):
+                                translator_input = ui.input(label=t('translator'), value=db_translator).classes('w-full sm:flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                                narrator_input = ui.input(label=t('narrator'), value=db_narrator).classes('w-full sm:flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                            with ui.row().classes('w-full gap-4 flex-col sm:flex-row sm:flex-nowrap'):
+                                illustrator_input = ui.input(label=t('illustrator'), value=db_illustrator).classes('w-full sm:flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
+                                editor_input = ui.input(label=t('editor'), value=db_editor).classes('w-full sm:flex-1 dark:bg-slate-900').props(f'outlined dense {dark_prop}')
 
-                # Buchreihe
-                with ui.row().classes(f'w-full items-center gap-4 mt-1 p-3 rounded-lg border {bg_sub_section}'):
-                    series_checkbox = ui.checkbox(t('series'), value=db_is_series).classes(text_switch)
+                # Buchreihe (Optimiert: Eingabefelder flex-wrap)
+                with ui.row().classes(f'w-full items-center gap-3 mt-1 p-3 rounded-lg border flex-wrap {bg_sub_section}'):
+                    series_checkbox = ui.checkbox(t('series'), value=db_is_series).classes(f'w-full sm:w-auto {text_switch}')
                     
                     existierende_reihen = sorted(list({b[9].strip() for b in database.lade_buecher_aus_db(layout.aktiver_user_id) if b[8] and b[9] and b[9].strip()}))
-                    reihenname_input = ui.select(options=existierende_reihen, value=db_s_name.strip() if db_s_name else None, label=t('series_name')).classes('w-72 dark:bg-slate-900') \
+                    reihenname_input = ui.select(options=existierende_reihen, value=db_s_name.strip() if db_s_name else None, label=t('series_name')).classes('flex-1 min-w-[200px] sm:w-72 dark:bg-slate-900') \
                         .props(f'outlined dense use-input hide-selected fill-input input-debounce="0" new-value-mode="add" {select_prop}') \
                         .bind_visibility_from(series_checkbox, 'value')
                     
@@ -250,29 +231,30 @@ def formular_rendern(edit_id=None, daten=None):
                 desc_input = ui.textarea(label=t('description'), value=db_description).classes('w-full dark:bg-slate-900').props(f'outlined rows=4 {dark_prop}')
             
             # =========================================================================
-            # BLOCK 2: PERSÖNLICHE NUTZER-STEUERUNG (UNTEN)
+            # BLOCK 2: PERSÖNLICHE NUTZER-STEUERUNG
             # =========================================================================
-            with ui.card().classes(f'w-full p-6 border shadow-xs flex flex-col gap-4 {bg_card}'):
-                ui.label(t('section_personal_info')).classes(f'text-sm font-bold uppercase tracking-wider {text_sub} mb-2')
+            with ui.card().classes(f'w-full p-4 sm:p-6 border shadow-xs flex flex-col gap-4 {bg_card}'):
+                ui.label(t('section_personal_info')).classes(f'text-sm font-bold uppercase tracking-wider {text_sub} mb-1')
 
-                with ui.row().classes('w-full items-center gap-4 flex-wrap'):
+                # Status, Rating, Daten (Optimiert: Flex-wrap + Mindestbreiten für sauberes Wrapping auf Mobile)
+                with ui.row().classes('w-full items-center gap-3 flex-wrap'):
                     status_options = {'UNREAD': t('unread'), 'READING': t('reading'), 'READ': t('read')}
-                    status_input = ui.select(options=status_options, value=db_status, label=t('status')).classes('w-44 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    status_input = ui.select(options=status_options, value=db_status, label=t('status')).classes('flex-1 min-w-[140px] sm:w-44 dark:bg-slate-900').props(f'outlined dense {select_prop}')
                     
                     rating_options = {i: (t('none') if i == 0 else f'{i} {t("stars" if i > 1 else "star")}') for i in range(6)}
-                    rating_input = ui.select(options=rating_options, value=db_rating, label=t('rating')).classes('w-40 dark:bg-slate-900').props(f'outlined dense {select_prop}')
+                    rating_input = ui.select(options=rating_options, value=db_rating, label=t('rating')).classes('flex-1 min-w-[140px] sm:w-40 dark:bg-slate-900').props(f'outlined dense {select_prop}')
                     
-                    start_date_input = ui.input(label=t('start'), value=db_start).classes('w-44 dark:bg-slate-900').props(f'type=date outlined dense {dark_prop}')
-                    end_date_input = ui.input(label=t('end'), value=db_end).classes('w-44 dark:bg-slate-900').props(f'type=date outlined dense {dark_prop}')
+                    start_date_input = ui.input(label=t('start'), value=db_start).classes('flex-1 min-w-[140px] sm:w-44 dark:bg-slate-900').props(f'type=date outlined dense {dark_prop}')
+                    end_date_input = ui.input(label=t('end'), value=db_end).classes('flex-1 min-w-[140px] sm:w-44 dark:bg-slate-900').props(f'type=date outlined dense {dark_prop}')
 
-            # --- FOOTER BUTTONS ---
-            with ui.row().classes('w-full justify-end gap-3 mt-2'):
+            # --- FOOTER BUTTONS (Optimiert: flex-col-reverse auf Mobile -> Speichern oben, Abbrechen unten) ---
+            with ui.row().classes('w-full gap-3 mt-2 flex-col-reverse sm:flex-row sm:justify-end pb-12 sm:pb-0'):
                 abbruch_ziel = f'/book/{edit_id}' if ist_edit else '/'
-                ui.button(t('cancel'), on_click=lambda: ui.navigate.to(abbruch_ziel)).classes('bg-slate-400 hover:bg-slate-500 text-white px-4 py-2 rounded')
+                ui.button(t('cancel'), on_click=lambda: ui.navigate.to(abbruch_ziel)).classes('w-full sm:w-auto bg-slate-400 hover:bg-slate-500 text-white px-4 py-2.5 rounded')
                 
                 btn_color = 'bg-orange-600 hover:bg-orange-500' if ist_edit else 'bg-green-600 hover:bg-green-500'
                 btn_text = t('save_changes') if ist_edit else t('save_in_shelf')
-                ui.button(btn_text, on_click=speichern).classes(f'{btn_color} text-white px-6 py-2 rounded shadow')
+                ui.button(btn_text, on_click=speichern).classes(f'w-full sm:w-auto {btn_color} text-white px-6 py-2.5 rounded shadow text-base font-semibold')
 
     async def isbn_suchen():
         isbn_wert = isbn_input.value.strip().replace("-", "") if isbn_input.value else ""

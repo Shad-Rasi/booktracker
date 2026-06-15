@@ -24,6 +24,7 @@ TRANSLATIONS = {
         'not_found': 'Buch nicht gefunden!',
         'empty_shelf': 'Dein Regal ist noch leer.',
         'no_search_results': 'Keine passenden Ergebnisse gefunden.',
+        'clear_filters': 'Filter zurücksetzen',
 
         # --- Buch-Eintrag & Basisdetails ---
         'add_book': 'Buch hinzufügen',
@@ -56,7 +57,7 @@ TRANSLATIONS = {
         'editor': 'Herausgeber / Editor',
         'publisher': 'Verlag',
         'published_date': 'Erscheinungsdatum',
-        'language': 'Sprache des Buchs',
+        'language': 'Sprache',
         'description': 'Beschreibung / Klappentext',
         'contributors': 'Beitragende',
 
@@ -368,6 +369,7 @@ TRANSLATIONS = {
         'not_found': 'Book not found!',
         'empty_shelf': 'Your shelf is empty.',
         'no_search_results': 'No matching results found.',
+        'clear_filters': 'Reset filters',
 
         # --- Book Entry & Core Details ---
         'add_book': 'Add Book',
@@ -400,7 +402,7 @@ TRANSLATIONS = {
         'editor': 'Editor',
         'publisher': 'Publisher',
         'published_date': 'Publication Date',
-        'language': 'Book Language',
+        'language': 'Language',
         'description': 'Description / Synopsis',
         'contributors': 'Contributors',
 

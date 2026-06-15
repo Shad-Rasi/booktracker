@@ -671,7 +671,7 @@ def hole_kalender_daten_fuer_user(user_id):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT rl.log_date, b.title, rl.pages_read, b.id, rc.id
+            SELECT rl.log_date, b.title, rl.pages_read, b.id, rc.id, rl.progress_page -- <-- HIER progress_page ERGÄNZT
             FROM reading_logs rl
             JOIN reading_cycles rc ON rl.cycle_id = rc.id
             JOIN books b ON rc.book_id = b.id

@@ -1,4 +1,5 @@
 import os
+import asyncio
 from datetime import datetime
 from nicegui import app, ui
 from starlette.staticfiles import StaticFiles
@@ -13,13 +14,12 @@ app.add_static_files('/covers', COVER_DIR, follow_symlink=True)
 app.add_static_files('/authors', AUTHOR_DIR, follow_symlink=True)
 app.add_static_files('/static', 'static')
 ui.add_head_html('<link rel="icon" type="image/png" href="/static/favicon.png">', shared=True)
-# NEU: Das PWA-Manifest laden
 ui.add_head_html('<link rel="manifest" href="/static/manifest.json">', shared=True)
 
-# NEU: Extra-Support für Apple iOS (Safari), damit das Icon auch dort sofort greift
 ui.add_head_html('<link rel="apple-touch-icon" href="/static/app-icon.png">', shared=True)
 ui.add_head_html('<meta name="apple-mobile-web-app-capable" content="yes">', shared=True)
 ui.add_head_html('<meta name="apple-mobile-web-app-status-bar-style" content="default">', shared=True)
+
 
 for route in app.routes:
     if route.path in ['/covers', '/authors'] and isinstance(route.app, StaticFiles):
@@ -41,9 +41,18 @@ import settings
 import series
 import genres
 
-# Globale Variablen
+# Globale Variablen für UI-Referenzen und Cache
 kachel_container = None
 paginierungs_container = None
+suchfeld = None
+status_filter = None
+format_filter = None
+ownership_filter = None
+location_filter = None
+genre_filter = None
+sort_filter = None
+btn_reset = None
+
 alle_buecher_cache = []
 gefilterte_buecher_cache = []
 
@@ -74,7 +83,6 @@ def sortiere_buecher_logik(buecher_liste, kriterium):
 
 
 def formatierte_daten_holen():
-    """Holt Rohdaten und bereitet sie auf. Indizes exakt an deine echte lade_buecher_aus_db angepasst."""
     rows = database.lade_buecher_aus_db(layout.aktiver_user_id)
     status_text_mapping = {'READING': t('reading'), 'READ': t('read'), 'UNREAD': t('unread')}
     existierende_covers = set(os.listdir(COVER_DIR))
@@ -84,8 +92,6 @@ def formatierte_daten_holen():
         b_id = r[0]
         cover_datei = f"{b_id}.jpg"
         cover_url = f"/covers/{cover_datei}" if cover_datei in existierende_covers else "/covers/placeholder.jpg"
-
-        # Genres direkt synchron mitladen
         genres_des_buches = database.lade_genres_eines_buches(b_id)
 
         ergebnis.append({
@@ -102,9 +108,8 @@ def formatierte_daten_holen():
             'special': bool(r[7]),
             'reihen_anzeige': f"{r[9]} - {t('series_num')} {r[10]}" if r[8] and r[9] else None,
             'subtitle': r[13],
-            # JETZT EXAKT ABGESTIMMT:
             'format': r[23] if r[23] else 'PHYSICAL',
-            'ownership': r[24] if r[24] else 'OWNED',       # Jetzt wieder auf Index 24, wo es hingehört!
+            'ownership': r[24] if r[24] else 'OWNED',       
             'location_id': r[26],
             'location_name': r[27] if r[27] else None,
             'genres': genres_des_buches,  
@@ -113,9 +118,21 @@ def formatierte_daten_holen():
     return ergebnis
 
 
+def ist_ein_filter_aktiv():
+    """Prüft sauber, ob aktuell irgendein Filter oder eine Suche aktiv ist."""
+    return any([
+        suchfeld.value != '' if suchfeld and suchfeld.value else False,
+        status_filter.value != 'ALL' if status_filter and status_filter.value else False,
+        format_filter.value != 'ALL' if format_filter and format_filter.value else False,
+        ownership_filter.value != 'ALL' if ownership_filter and ownership_filter.value else False,
+        location_filter.value != 'ALL' if location_filter and location_filter.value else False,
+        genre_filter.value != 'ALL' if genre_filter and genre_filter.value else False
+    ])
+
+
 def filter_anwenden():
-    """Filtert den Cache im Arbeitsspeicher absolut simpel nach den aktuellen UI-Werten."""
     global gefilterte_buecher_cache, aktuelle_seite
+    if not suchfeld: return  # Falls UI noch nicht bereit ist
     
     suchtext = suchfeld.value.lower().strip() if suchfeld.value else ""
     f_status = status_filter.value
@@ -125,7 +142,6 @@ def filter_anwenden():
     f_genre = genre_filter.value  
     f_sort = sort_filter.value
 
-    # Speicher immer synchron halten
     REGAL_MEMORY['search_text'] = suchfeld.value if suchfeld.value else ""
     REGAL_MEMORY['filter_status'] = f_status
     REGAL_MEMORY['filter_format'] = f_format
@@ -156,6 +172,22 @@ def filter_anwenden():
     gefilterte_buecher_cache = sortiere_buecher_logik(gefiltert, f_sort)
     kacheln_rendern()
     paginierung_rendern()
+
+    # Sichtbarkeit des Reset-Buttons live umschalten
+    if btn_reset and ui.context.client.has_socket_connection:
+        btn_reset.set_visibility(ist_ein_filter_aktiv())
+
+
+def alle_filter_zuruecksetzen():
+    if not suchfeld: return
+    suchfeld.value = ''
+    status_filter.value = 'ALL'
+    format_filter.value = 'ALL'
+    ownership_filter.value = 'ALL'
+    location_filter.value = 'ALL'
+    genre_filter.value = 'ALL'
+    sort_filter.value = 'title_asc'
+    filter_anwenden()
 
 
 def kacheln_rendern():
@@ -189,7 +221,7 @@ def kacheln_rendern():
             card_style = 'border: 1px dashed #ef4444;' if buch['ownership'] == 'GIVEN_AWAY' else ''
             cover_classes = 'w-full h-full object-cover opacity-40 grayscale transition-all' if buch['ownership'] == 'GIVEN_AWAY' else 'w-full h-full object-cover transition-all'
 
-            with ui.card().classes('w-full max-w-[180px] h-auto p-0 overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer flex flex-col relative mx-auto').style(card_style).on('click', kachel_klick):
+            with ui.card().classes('w-full h-auto p-0 overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer flex flex-col relative').style(card_style).on('click', kachel_klick):
                 with ui.element('div').classes('relative w-full aspect-[2/3] bg-slate-50 flex items-center justify-center overflow-hidden border-b border-slate-100'):
                     ui.image(buch['cover_url']).classes(cover_classes)
                     with ui.row().classes('absolute top-2 right-2 items-center gap-0.5 bg-white/90 backdrop-blur-sm px-1.5 py-0.5 rounded shadow-sm'):
@@ -243,7 +275,7 @@ def paginierung_rendern():
 
 @ui.page('/')
 def hauptseite():
-    global kachel_container, paginierungs_container, alle_buecher_cache, suchfeld, status_filter, format_filter, ownership_filter, location_filter, genre_filter, sort_filter, aktuelle_seite
+    global kachel_container, paginierungs_container, alle_buecher_cache, suchfeld, status_filter, format_filter, ownership_filter, location_filter, genre_filter, sort_filter, aktuelle_seite, btn_reset    
     
     alle_buecher_cache = formatierte_daten_holen()
     regale = database.lade_alle_regale()
@@ -260,21 +292,34 @@ def hauptseite():
         dark_prop = 'dark popup-content-class="dark"' if is_dark else ''
 
         with ui.card().classes('w-full p-4 bg-slate-100 dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 mb-4 flex flex-col gap-3'):
-            with ui.row().classes('w-full items-center gap-3 no-wrap'):
-                
-                suchfeld = ui.input(placeholder=t('search'), value=REGAL_MEMORY['search_text']).classes('flex-1 px-1').props(f'clearable icon=search outlined debounce=200 {"dark" if is_dark else ""}')\
-                    .on_value_change(lambda: filter_anwenden())
-                
-                sort_opts = {'title_asc': '🔤 ' + t('sort_title'), 'author_asc': '✍️ ' + t('sort_author'), 'pages_desc': '📄 ' + t('sort_pages_desc'), 'pages_asc': '📄 ' + t('sort_pages_asc'), 'rating_desc': '⭐ ' + t('sort_rating')}
-                sort_filter = ui.select(options=sort_opts, value=REGAL_MEMORY['filter_sort'], on_change=lambda: filter_anwenden()).classes('w-48 px-1').props(f'outlined dense {dark_prop}')
-                
-                def alle_filter_zuruecksetzen():
-                    suchfeld.value = ''; status_filter.value = 'ALL'; format_filter.value = 'ALL'; ownership_filter.value = 'ALL'; location_filter.value = 'ALL'; genre_filter.value = 'ALL'
-                    filter_anwenden()
+            
+            with ui.card().classes('w-full p-4 bg-slate-100 dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 mb-4 flex flex-col gap-3'):
+            
+                # --- ZEILE 1: Suchfeld + Sortierungs- & Button-Zone ---
+                # flex-col auf Mobile (Suchfeld oben, Sortier-Zeile darunter). md:flex-row auf Desktop (alles auf einer Linie)
+                with ui.row().classes('w-full items-center gap-2 flex-col md:flex-row flex-nowrap'):
+                    
+                    # Suchfeld: Volle Breite auf Mobile (w-full), flex-1 auf Desktop
+                    suchfeld = ui.input(placeholder=t('search'), value=REGAL_MEMORY['search_text']).classes('w-full md:flex-1 px-1').props(f'clearable icon=search outlined debounce=200 {"dark" if is_dark else ""}')\
+                        .on_value_change(lambda: filter_anwenden())
 
-                ui.button(icon='filter_alt_off', on_click=alle_filter_zuruecksetzen).props('flat round color="negative"').tooltip('Filter zurücksetzen')
-                ui.button(icon='tune', color='slate', on_click=lambda: setattr(filter_sektion, 'visible', not filter_sektion.visible)).classes('bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200')
+                    # --- HIER IST DIE NEUE MOBIL-REIHE ---
+                    # Hält Dropdown und Buttons auf dem Handy starr nebeneinander (w-full flex-row no-wrap).
+                    # Auf dem Desktop (md:w-auto md:p-0) löst sich die Box optisch auf.
+                    with ui.row().classes('w-full md:w-auto items-center gap-2 flex-row flex-nowrap px-1'):
+                        
+                        # Sortierung: Nimmt auf dem Handy den restlichen Platz ein (flex-1), am PC eine feste Breite (md:w-56)
+                        sort_opts = {'title_asc': '🔤 ' + t('sort_title'), 'author_asc': '✍️ ' + t('sort_author'), 'pages_desc': '📄 ' + t('sort_pages_desc'), 'pages_asc': '📄 ' + t('sort_pages_asc'), 'rating_desc': '⭐ ' + t('sort_rating')}
+                        sort_filter = ui.select(options=sort_opts, value=REGAL_MEMORY['filter_sort'], on_change=lambda: filter_anwenden()).classes('flex-1 md:w-56').props(f'outlined dense {dark_prop}')
 
+                        # REPARIERT: Tooltip wird jetzt über t() dynamisch übersetzt
+                        btn_reset = ui.button(icon='filter_alt_off', on_click=alle_filter_zuruecksetzen).props('flat round color="negative"').tooltip(t('clear_filters'))
+                        btn_reset.set_visibility(ist_ein_filter_aktiv())
+                        
+                        # Der Zahnrad-Button für die erweiterten Filter
+                        ui.button(icon='tune', color='slate', on_click=lambda: setattr(filter_sektion, 'visible', not filter_sektion.visible)).classes('bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 shrink-0')
+                
+            # --- ZEILE 2: Die erweiterten Filter (Status, Format etc.) ---
             with ui.row().classes('w-full gap-4 p-2 bg-slate-50 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700 transition-all flex-wrap') as filter_sektion:
                 filter_sektion.visible = any([REGAL_MEMORY['filter_status'] != 'ALL', REGAL_MEMORY['filter_format'] != 'ALL', REGAL_MEMORY['filter_ownership'] != 'ALL', REGAL_MEMORY['filter_location'] != 'ALL', REGAL_MEMORY['filter_genre'] != 'ALL'])
                 
@@ -295,14 +340,16 @@ def hauptseite():
                 for g_id, g_name in globale_genres: genre_opts[g_name] = g_name
                 genre_filter = ui.select(options=genre_opts, value=REGAL_MEMORY['filter_genre'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense with-input {dark_prop}')
         
-        kachel_container = ui.row().classes('w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6')
+        kachel_container = ui.element('div').classes('w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-6')
         paginierungs_container = ui.row().classes('w-full justify-center items-center gap-2 mt-8 mb-4')
 
-        # FILTER DIREKT SCHREIBEN: Absolut synchron, ohne künstliche Verzögerung
+        # Filter initial triggern
         filter_anwenden()
 
-        # on_connect macht NUR noch das Scrolling, falls nötig
         async def initialisiere_scroll_stand():
+            if btn_reset:
+                btn_reset.set_visibility(ist_ein_filter_aktiv())
+
             gespeicherter_scrollstand = REGAL_MEMORY['shelf_scroll']
             if gespeicherter_scrollstand > 0:
                 await asyncio.sleep(0.1)
@@ -315,6 +362,6 @@ ui.run(
     port=int(os.getenv("PORT", 8080)),
     title="Booktracker",
     favicon="📚",
-    reload=False,
+    reload=True,
     storage_secret=os.getenv("STORAGE_SECRET", "change_me_in_production"),
 )

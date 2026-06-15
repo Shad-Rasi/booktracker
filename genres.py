@@ -201,7 +201,7 @@ def hole_buecher_nach_genre(user_id, genre_name):
                 b.id, b.title, b.subtitle, b.author, b.translator, b.narrator, b.illustrator, 
                 b.editor, b.isbn_13, b.isbn_10, b.publisher, b.published_date, b.language, 
                 b.description, b.pages, b.special, b.is_series, b.series_name, b.series_number, b.location_id,
-                ub.status, ub.rating, ub.format, ub.ownership, ub.quantity, l.name
+                ub.status, ub.rating, b.format, b.ownership, b.quantity, l.name
             FROM books b
             JOIN book_genres bg ON b.id = bg.book_id
             JOIN genres g ON bg.genre_id = g.id
