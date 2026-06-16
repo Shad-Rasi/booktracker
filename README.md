@@ -1,6 +1,14 @@
+<p align="center">
+  <a href="https://booktracker.de" target="_blank">
+    <img src="static/app-icon.png" alt="Booktracker Logo" width="120" height="120" style="border-radius: 20px;">
+  </a>
+</p>
+
 # 📚 Booktracker
 
 A sleek, privacy-first, self-hosted tracker for your physical book library. Keep track of your reading progress, automatically fetch beautiful cover art, and generate elegant PDF reading reports.
+
+🌍 **[Visit the Official Homepage](https://booktracker.de)**
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue?style=for-the-badge&logo=python&logoColor=white)
 ![NiceGUI](https://img.shields.io/badge/UI-NiceGUI-green?style=for-the-badge)
