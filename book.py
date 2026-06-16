@@ -51,6 +51,9 @@ def detailseite(b_id: int):
     dark_prop = 'dark popup-content-class="dark"' if is_dark else ''
     dialog_prop = 'dark' if is_dark else ''
 
+    # TRICK: Registrierung für die Refresh-Funktionen, damit Python sie von oben nach unten kennt
+    refresh_registry = {}
+
     def inline_speichern(neuer_status=None, neuer_rating_wert=None):
         """Speichert Status und Bewertung live und aktualisiert alle UI-Zonen."""
         nonlocal start, end  
@@ -95,10 +98,12 @@ def detailseite(b_id: int):
         database.speichere_buch_in_db(book_id, layout.aktiver_user_id, aktuelle_book_data, aktuelle_user_data)
         ui.notify(t('notify_saved'), type='positive', duration=1)
         
-        infokarte_links_refresh.refresh()
-        tracking_zone_refresh.refresh()
-        seite_neu_laden_zone.refresh() 
-        globales_logbuch_refresh.refresh()
+        # WICHTIGER FIX: 
+        # Wir rufen NUR noch den großen Haupt-Refresh auf.
+        # Da dieser die gesamte Seite neu zeichnet, aktualisieren sich die Infokarte, 
+        # die Tracking-Zone und das Logbuch vollautomatisch fehler- und warnungsfrei mit!
+        if 'seite_neu_laden' in refresh_registry: 
+            refresh_registry['seite_neu_laden']()
         
     with basis_layout(title):
         ui.button(
@@ -115,14 +120,13 @@ def detailseite(b_id: int):
             galerie_container = ui.element('div').classes('w-full')
             
             async def bild_waehlen(url):
-                aktueller_client = ui.context.client
                 search_dialog.close()
                 ui.notify(t('book_notify_saving_cover'), type='info')
                 erfolg = await asyncio.to_thread(database.lade_und_speichere_cover, book_id, url)
                 if erfolg:
                     ui.notify(t('book_notify_cover_updated'), type='positive')
                     await asyncio.sleep(0.2)
-                    aktueller_client.change_page(f'/book/{book_id}')
+                    ui.navigate.to(f'/book/{book_id}')
                 else:
                     ui.notify(t('book_notify_cover_error'), type='negative')
 
@@ -151,11 +155,10 @@ def detailseite(b_id: int):
 
         with ui.dialog() as upload_dialog, ui.card().classes('p-6 w-96 flex flex-col gap-4').style(style_dialog_card):
             ui.label(t('book_upload_change_cover')).classes('text-lg font-bold text-slate-700 dark:text-slate-100')
-            cover_container = ui.element('div')
-            ui.upload(label=t('book_select_image_label'), auto_upload=True, on_upload=lambda e: cover_verarbeiten(e, upload_dialog, cover_container)).props(f'accept=image/* max-files=1 {dialog_prop}').classes('w-full')
+            ui.upload(label=t('book_select_image_label'), auto_upload=True, on_upload=lambda e: cover_verarbeiten(e, upload_dialog)).props(f'accept=image/* max-files=1 {dialog_prop}').classes('w-full')
             ui.button(t('cancel'), on_click=upload_dialog.close).classes('bg-slate-400 dark:bg-slate-600 text-white w-full')
 
-        async def cover_verarbeiten(e, dialog, container):
+        async def cover_verarbeiten(e, dialog):
             import os
             os.makedirs(database.COVER_DIR, exist_ok=True)
             ziel = os.path.join(database.COVER_DIR, f"{book_id}.jpg")
@@ -167,17 +170,14 @@ def detailseite(b_id: int):
             except Exception as ex:
                 ui.notify(f"{t('book_notify_save_error')}: {str(ex)}", type='negative')
 
-
         # =========================================================================
         # THE FINAL MASTER ZONE: Grid mit CSS-Bündigkeit & perfekter Mobile-Abfolge
         # =========================================================================
         @ui.refreshable
         def seite_neu_laden_zone():
-            # items-start verhindert künstliche Höhen-Zerrungen der Zeilen
             with ui.element('div').classes('w-full max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-x-6 md:gap-x-8 gap-y-4 px-4 md:px-0 mb-16 items-start'):
                 
                 # --- 1. DER TITELBLOCK ---
-                # Mobil: Ganz oben (1. Element). Desktop: Spalte 2 & 3, Reihe 1.
                 with ui.column().classes('w-full flex flex-col gap-1 md:col-start-2 md:col-span-2 md:row-start-1'):
                     with ui.row().classes('w-full justify-between items-start gap-2 flex-nowrap'):
                         with ui.column().classes('flex flex-col gap-0.5 flex-1 items-start'):
@@ -245,10 +245,9 @@ def detailseite(b_id: int):
                                 .props('flat round dense size=sm').classes(f'{star_color} transition-colors')
 
                 # --- 2. DIE MEDIASPALTE (Cover & Infokarte) ---
-                # Mobil: Position 2 (Unter dem Titel). Desktop: Spalte 1, Reihe 1 & 2 parallel.
                 with ui.column().classes('w-full md:col-span-1 flex flex-col gap-4 md:row-start-1 md:row-span-2 mt-2 md:mt-0'):
                     cover_pfad = database.hole_cover_url(book_id)
-                    with ui.element('div').classes('w-full aspect-[2/3] rounded-lg shadow-md border border-slate-200 dark:border-slate-700 bg-slate-200 dark:bg-slate-800 flex items-center justify-center overflow-hidden') as cover_container:
+                    with ui.element('div').classes('w-full aspect-[2/3] rounded-lg shadow-md border border-slate-200 dark:border-slate-700 bg-slate-200 dark:bg-slate-800 flex items-center justify-center overflow-hidden'):
                         if cover_pfad != "/covers/placeholder.jpg":
                             ui.image(cover_pfad).classes('w-full h-full object-cover')
                         else:
@@ -294,14 +293,12 @@ def detailseite(b_id: int):
                                         ui.label(t('book_last_read')).classes(f'font-bold {text_zeit_read}')
                                         ui.label(f"{t('book_from')}: {translations.format_localized_date(real_start) or '--'}")
                                         ui.label(f"{t('book_to')}: {translations.format_localized_date(real_end) or '--'}")
-                    infokarte_links_refresh()
 
-                # --- 3. DIE DETAILSPALTE (Inhalte ab Klappentext) ---
-                # Mobil: Position 3 (Ganz unten). Desktop: Spalte 2 & 3, Reihe 2.
-                # WICHTIG: -mt-2 fängt auf Desktop den Abstand ab, sodass die Kachel nahtlos bündig hochwandert!
+                    infokarte_links_refresh()
+                    refresh_registry['infokarte_links'] = infokarte_links_refresh.refresh
+
+                # --- 3. DIE DETAILSPALTE ---
                 with ui.column().classes('w-full md:col-span-2 flex flex-col gap-4 md:row-start-2 md:col-start-2 md:-mt-3'):
-                    
-                    # Klappentext
                     beschreibung_container = ui.element('div').classes('w-full')
                     with beschreibung_container:
                         if description:
@@ -316,7 +313,6 @@ def detailseite(b_id: int):
                                 ui.badge(genre_name, color='slate').classes('text-[10px] font-medium px-2 py-0.5 rounded-md dark:bg-slate-700 dark:text-slate-200')
                         ui.separator().classes('my-2 dark:bg-slate-700')
 
-                    # Metadaten Block
                     formatiertes_datum = translations.format_localized_date(published_date)
                     ausgeschriebene_sprache = translations.format_book_language(language)
 
@@ -341,7 +337,6 @@ def detailseite(b_id: int):
 
                     ui.separator().classes('my-4 dark:bg-slate-700')
 
-                    # Tracking-Zone
                     @ui.refreshable
                     def tracking_zone_refresh():
                         current_status = seiten_status['aktueller_status']
@@ -378,7 +373,7 @@ def detailseite(b_id: int):
                                                 inline_speichern(neuer_status='READ')
                                             else:
                                                 tracking_zone_refresh.refresh()
-                                                globales_logbuch_refresh.refresh()
+                                                if 'globales_logbuch' in refresh_registry: refresh_registry['globales_logbuch']()
                                         else:
                                             ui.notify(meldung, type='warning')
                                     ui.button(icon='check', on_click=speichern_klick).classes('bg-emerald-600 text-white p-2')
@@ -396,7 +391,7 @@ def detailseite(b_id: int):
                                                     if database.loesche_reading_log_aus_db(d, cid, page):
                                                         ui.notify(t('book_notify_log_removed'), type='info')
                                                         tracking_zone_refresh.refresh()
-                                                        globales_logbuch_refresh.refresh()
+                                                        if 'globales_logbuch' in refresh_registry: refresh_registry['globales_logbuch']()
                                                 ui.button(icon='close', on_click=log_loeschen).props('flat round dense size=sm').classes('text-red-400 hover:text-red-600 shrink-0')
 
                         elif current_status == 'READ':
@@ -441,13 +436,14 @@ def detailseite(b_id: int):
                                                                 if database.loesche_reading_cycle_aus_db(target_id):
                                                                     ui.notify(t('book_notify_cycle_removed'), type='info')
                                                                     tracking_zone_refresh.refresh()
-                                                                    globales_logbuch_refresh.refresh()
+                                                                    if 'globales_logbuch' in refresh_registry: refresh_registry['globales_logbuch']()
                                                             ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
                                                     confirm_dial.open()
                                                 ui.button(icon='delete', on_click=zyklus_loeschen).props('flat round dense size=sm').classes('text-slate-400 hover:text-red-500')
-                    tracking_zone_refresh()
 
-                    # Logbuch
+                    tracking_zone_refresh()
+                    refresh_registry['tracking_zone'] = tracking_zone_refresh.refresh
+
                     @ui.refreshable
                     def globales_logbuch_refresh():
                         user_ui_fresh = database.lade_user_settings(layout.aktiver_user_id)
@@ -470,7 +466,9 @@ def detailseite(b_id: int):
                                                 ui.badge(t('book_status_finished'), color='emerald').props('dense text-color=white').classes('text-[10px] px-1.5 py-0.5')
                                             else:
                                                 ui.badge(t('book_status_active'), color='blue').props('dense text-color=white').classes('text-[10px] px-1.5 py-0.5')
-                    globales_logbuch_refresh()
 
-        # Ausführung
+                    globales_logbuch_refresh()
+                    refresh_registry['globales_logbuch'] = globales_logbuch_refresh.refresh
+
         seite_neu_laden_zone()
+        refresh_registry['seite_neu_laden'] = seite_neu_laden_zone.refresh

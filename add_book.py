@@ -217,14 +217,26 @@ def formular_rendern(edit_id=None, daten=None):
                     series_checkbox = ui.checkbox(t('series'), value=db_is_series).classes(f'w-full sm:w-auto {text_switch}')
                     
                     existierende_reihen = sorted(list({b[9].strip() for b in database.lade_buecher_aus_db(layout.aktiver_user_id) if b[8] and b[9] and b[9].strip()}))
-                    reihenname_input = ui.select(options=existierende_reihen, value=db_s_name.strip() if db_s_name else None, label=t('series_name')).classes('flex-1 min-w-[200px] sm:w-72 dark:bg-slate-900') \
-                        .props(f'outlined dense use-input hide-selected fill-input input-debounce="0" new-value-mode="add" {select_prop}') \
-                        .bind_visibility_from(series_checkbox, 'value')
-                    
+                    # 1. Das Eingabefeld definieren
+                    reihenname_input = ui.select(
+                        options=existierende_reihen, 
+                        value=db_s_name.strip() if db_s_name else None, 
+                        label=t('series_name')
+                    ).classes('flex-1 min-w-[200px] sm:w-72 dark:bg-slate-900') \
+                    .props(f'outlined dense use-input hide-selected fill-input input-debounce="0" new-value-mode="add" {select_prop}') \
+                    .bind_visibility_from(series_checkbox, 'value')
+
+                    # 2. Die Filter-Funktion (Nutzt e.args[0] für die Live-Suche)
                     def filter_reihen(e):
-                        val = e.value.lower() if e.value else ""
+                        val = e.args[0].lower() if (e.args and e.args[0]) else ""
                         reihenname_input.options = [r for r in existierende_reihen if val in r.lower()]
-                    reihenname_input.on('filter', filter_reihen)
+                        
+                        # TRICK: Wenn der Nutzer tippt, schreiben wir den aktuellen Text parallel 
+                        # in das .value-Attribut, damit es beim Speichern nicht verloren geht!
+                        if val and not any(r.lower() == val for r in reihenname_input.options):
+                            reihenname_input.value = e.args[0]
+
+                    reihenname_input.on('filter', filter_reihen)                                              
                     band_input = ui.number(label=t('series_num'), value=db_s_num, format='%d').classes('w-24 dark:bg-slate-900').props(f'outlined dense {dark_prop}').bind_visibility_from(series_checkbox, 'value')
 
                 # Beschreibung
