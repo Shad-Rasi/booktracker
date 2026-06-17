@@ -931,21 +931,19 @@ def lade_andere_user_mit_genres(aktuelle_user_id):
         return cursor.fetchall()
 
 def kopiere_genres_von_user(von_user_id, zu_user_id):
-    """Kopiert die Genres eines Users zu einem anderen User, falls sie nicht existieren."""
+    """Kopiert alle Genres eines Users zu einem anderen User direkt auf der Datenbank."""
     with get_connection() as conn:
         cursor = conn.cursor()
         
-        # 1. Hole alle Genre-Namen des Quell-Users
-        cursor.execute("SELECT name FROM genres WHERE user_id = ?", (von_user_id,))
-        genres_quell_user = cursor.fetchall()
+        # SQL-Direktimport: Holt die Namen vom Quell-User und schiebt sie beim Ziel-User rein.
+        # Falls das Genre beim Ziel-User existiert, greift das OR IGNORE.
+        cursor.execute("""
+            INSERT OR IGNORE INTO genres (user_id, name)
+            SELECT ?, name 
+            FROM genres 
+            WHERE user_id = ?
+        """, (zu_user_id, von_user_id))
         
-        # 2. Füge sie beim Ziel-User ein (UNIQUE Constraint verhindert Duplikate)
-        for (g_name,) in genres_quell_user:
-            cursor.execute("""
-                INSERT OR IGNORE INTO genres (user_id, name) 
-                VALUES (?, ?)
-            """, (zu_user_id, g_name))
-            
         conn.commit()
 
 def aktualisiere_buch_genres(book_id, genre_namen_liste, user_id):

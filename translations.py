@@ -289,6 +289,11 @@ TRANSLATIONS = {
         'notify_user_added': 'erfolgreich angelegt!',
         'notify_user_deleted': 'Nutzer gelöscht',
         'error_user_exists': 'Benutzer existiert bereits!',
+        'profile_copy:': 'Profil-Kopierfunktion (Genres)',
+        'choose_user': 'Nutzer auswählen',
+        'choose_user_first': 'Bitte wähle zuerst einen Nutzer aus!',
+        'genre_copy_successful': 'Genres erfolgreich kopiert! 🎉',
+        'import_genre': 'Genres von diesem Nutzer importieren',
 
         # --- Import / Export ---
         'import_export_title': 'Daten Import / Export',
@@ -630,6 +635,11 @@ TRANSLATIONS = {
         'notify_user_added': 'successfully created!',
         'notify_user_deleted': 'User deleted',
         'error_user_exists': 'User already exists!',
+        'profile_copy:': 'Profile Copy Feature (Genres)',
+        'choose_user': 'Select user',
+        'choose_user_first': 'Please select a user first!',
+        'genre_copy_successful': 'Genres successfully copied! 🎉',
+        'import_genre': 'Import genres from this user',
 
         # --- Import / Export ---
         'import_export_title': 'Data Import / Export',

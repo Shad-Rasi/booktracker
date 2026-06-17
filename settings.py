@@ -514,25 +514,25 @@ def einstellungen_seite():
                 andere_user = database.lade_andere_user_mit_genres(layout.aktiver_user_id)
                 if andere_user:
                     with ui.element('div').classes('w-full p-3 rounded border border-dashed border-slate-300 dark:border-slate-700 mb-4 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col gap-2'):
-                        ui.label('Aus Profil kopieren:').classes(f'text-xs font-bold uppercase tracking-wider {text_sub}')
+                        ui.label(t('profile_copy:')).classes(f'text-xs font-bold uppercase tracking-wider {text_sub}')
                         
                         with ui.row().classes('w-full items-center gap-3 no-wrap'):
                             user_opts = {u_id: u_name for u_id, u_name in andere_user}
                             user_auswahl = ui.select(
                                 options=user_opts, 
-                                label='Nutzer wählen'
+                                label=t('choose_user')
                             ).classes('flex-1 max-w-xs px-1').props(f'outlined dense {dark_prop}')
                             
                             async def import_starten():
                                 if not user_auswahl.value:
-                                    ui.notify('Bitte wähle zuerst einen Nutzer aus!', type='warning')
+                                    ui.notify(t('choose_user_first'), type='warning')
                                     return
                                 database.kopiere_genres_von_user(user_auswahl.value, layout.aktiver_user_id)
-                                ui.notify('Genres erfolgreich importiert! 🎉', type='positive')
+                                ui.notify(t('genre_copy_successful'), type='positive')
                                 user_auswahl.value = None
                                 genre_liste_refresh.refresh()  # Aktualisiert sofort die Pill-Anzeige darunter!
                             
-                            ui.button(icon='download', on_click=import_starten).classes('bg-blue-600 text-white p-2.5 rounded shadow-sm').tooltip('Genres importieren')
+                            ui.button(icon='download', on_click=import_starten).classes('bg-blue-600 text-white p-2.5 rounded shadow-sm').tooltip(t('import_genre'))
 
                 ui.separator().classes('my-4 dark:bg-slate-700')
                 ui.label(t('existing_genres')).classes(f'text-sm font-bold mb-2 {text_sub}')
@@ -628,3 +628,15 @@ def einstellungen_seite():
                         ui.button(t('settings_reset_execute'), on_click=lambda: [reset_dialog.close(), werksreset_ausfuehren()]).classes('bg-red-600 text-white')
 
                 ui.button(t('settings_reset_btn'), icon='delete_forever', on_click=reset_dialog.open).classes('bg-red-600 hover:bg-red-700 text-white h-[40px] w-full rounded shadow-sm text-sm py-0')
+
+    # ==========================================
+    # FOOTER (VERSION & ENTWICKLER)
+    # ==========================================
+    with ui.element('div').classes('col-span-full w-full flex flex-col items-center justify-center gap-1 mt-12 mb-4 text-[11px] font-mono tracking-wide text-slate-400 dark:text-slate-500'):
+        ui.separator().classes('w-16 mb-2 opacity-50 dark:opacity-30')
+        with ui.row().classes('items-center gap-1.5'):
+            ui.icon('code', size='xs')
+            ui.label('Booktracker v0.6.3')
+        with ui.row().classes('items-center gap-1.5'):
+            ui.icon('copyright', size='xs')
+            ui.label('Developed by Shad-Rasi')
