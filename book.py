@@ -44,7 +44,7 @@ def detailseite(b_id: int):
     if author:
         author_id = database.hole_autoren_id_durch_name(layout.aktiver_user_id, author)
 
-    buch_genres = database.lade_genres_eines_buches(b_id)
+    buch_genres = database.lade_genres_eines_buches(b_id, layout.aktiver_user_id)
 
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']

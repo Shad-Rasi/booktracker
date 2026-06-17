@@ -914,17 +914,17 @@ def loesche_genre_aus_db(genre_id):
             print(f"Fehler beim Löschen des Genres: {e}")
             return False
 
-def lade_genres_eines_buches(book_id):
-    """Holt alle zugeordneten Genres für ein bestimmtes Buch (gibt eine Liste von Strings zurück)."""
+def lade_genres_eines_buches(book_id, user_id):
+    """Holt alle zugeordneten Genres für ein bestimmtes Buch, die dem jeweiligen User gehören."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT g.name 
             FROM genres g
             JOIN book_genres bg ON g.id = bg.genre_id
-            WHERE bg.book_id = ?
+            WHERE bg.book_id = ? AND g.user_id = ?
             ORDER BY g.name ASC
-        """, (book_id,))
+        """, (book_id, user_id))
         return [row[0] for row in cursor.fetchall()]
 
 def lade_andere_user_mit_genres(aktuelle_user_id):

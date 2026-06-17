@@ -92,7 +92,7 @@ def formatierte_daten_holen():
         b_id = r[0]
         cover_datei = f"{b_id}.jpg"
         cover_url = f"/covers/{cover_datei}" if cover_datei in existierende_covers else "/covers/placeholder.jpg"
-        genres_des_buches = database.lade_genres_eines_buches(b_id)
+        genres_des_buches = database.lade_genres_eines_buches(b_id, layout.aktiver_user_id)
 
         ergebnis.append({
             'id': b_id,
