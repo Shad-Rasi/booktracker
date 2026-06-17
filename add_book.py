@@ -35,7 +35,7 @@ def formular_rendern(edit_id=None, daten=None):
     
     globale_genres = database.lade_alle_genres(layout.aktiver_user_id)
     genre_liste_auswahl = [g[1] for g in globale_genres]
-    bereits_zugeordnete_genres = database.lade_genres_eines_buches(edit_id) if ist_edit else []
+    bereits_zugeordnete_genres = database.lade_genres_eines_buches(edit_id, layout.aktiver_user_id) if ist_edit else []
     
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
     is_dark = user_ui['dark_mode']

@@ -361,43 +361,33 @@ def loesche_regal_aus_db(location_id):
             print(f"Fehler beim Löschen des Regals: {e}")
             return False
 
-def lade_alle_autoren_aus_db(user_id):
+def lade_alle_autoren_aus_db(user_id=None):
     """
-    Holt alle einzigartigen Autorennamen aus den Büchern des Users
-    und gleicht sie mit der authors-Tabelle ab.
+    Holt alle Autoren aus der globalen Tabelle, von denen im System 
+    überhaupt Bücher existieren (da alle Bücher für alle Nutzer sichtbar sind).
+    Stellt sicher, dass neue Autoren aus der 'books'-Tabelle in 'authors' eingepflegt werden.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
-        # Wir holen erst alle Autoren, die der User überhaupt in seiner Bibliothek hat
-        cursor.execute("""
-            SELECT DISTINCT b.author 
-            FROM books b
-            JOIN user_books ub ON b.id = ub.book_id
-            WHERE ub.user_id = ? AND b.author IS NOT NULL AND b.author != ''
-            ORDER BY b.author ASC
-        """, (user_id,))
-        vorhandene_autoren = [row[0] for row in cursor.fetchall()]
         
-        # Wir stellen sicher, dass diese Autoren alle in der 'authors'-Tabelle existieren
-        for autoren_name in vorhandene_autoren:
-            try:
-                cursor.execute("INSERT OR IGNORE INTO authors (name) VALUES (?)", (autoren_name.strip(),))
-            except:
-                pass
+        # 1. Schritt: Alle Autorennamen aus der books-Tabelle sauber getrimmt 
+        # in die globale authors-Tabelle schubsen, falls sie dort fehlen.
+        cursor.execute("""
+            INSERT OR IGNORE INTO authors (name)
+            SELECT DISTINCT TRIM(author)
+            FROM books
+            WHERE author IS NOT NULL AND author != ''
+        """)
         conn.commit()
         
-        # Jetzt holen wir die vollständigen Datensätze aus der authors-Tabelle
-        # Trick: Nur die Autoren, von denen der User auch wirklich Bücher hat!
-        platzhalter = ",".join(["?"] * len(vorhandene_autoren))
-        if not vorhandene_autoren:
-            return []
-            
-        cursor.execute(f"""
-            SELECT id, name, bio, image_url, local_image_path 
-            FROM authors 
-            WHERE name IN ({platzhalter})
-            ORDER BY name ASC
-        """, vorhandene_autoren)
+        # 2. Schritt: Genau die Autoren ausgeben, die auch wirklich ein Buch im System haben.
+        cursor.execute("""
+            SELECT DISTINCT a.id, a.name, a.bio, a.image_url, a.local_image_path 
+            FROM authors a
+            JOIN books b ON TRIM(b.author) = a.name
+            ORDER BY a.name ASC
+        """)
+        
         return cursor.fetchall()
 
 def lade_autor_details(autor_id):
@@ -441,15 +431,16 @@ def hole_autoren_id_durch_name(user_id, autor_name):
             return None
 
 def lade_buecher_von_autor(user_id, autoren_name):
-    """Holt alle Bücher eines spezifischen Autors für den aktuellen User inklusive Erscheinungsdatum."""
+    """Holt alle Bücher eines spezifischen Autors aus der globalen Tabelle inklusive benutzerspezifischer Daten."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        # Wir fügen b.published_date als 8. Feld (Index 7) hinzu
+        # Ein LEFT JOIN sorgt dafür, dass das Buch IMMER geladen wird, 
+        # auch wenn in user_books noch kein Eintrag für diesen User existiert.
         cursor.execute("""
             SELECT b.id, b.title, b.author, b.isbn_13, b.pages, ub.status, ub.rating, b.published_date, b.ownership
             FROM books b
-            JOIN user_books ub ON b.id = ub.book_id
-            WHERE ub.user_id = ? AND b.author = ?
+            LEFT JOIN user_books ub ON b.id = ub.book_id AND ub.user_id = ?
+            WHERE TRIM(b.author) = TRIM(?)
         """, (user_id, autoren_name))
         return cursor.fetchall()
 
@@ -958,12 +949,17 @@ def kopiere_genres_von_user(von_user_id, zu_user_id):
         conn.commit()
 
 def aktualisiere_buch_genres(book_id, genre_namen_liste, user_id):
-    """Löscht alle alten Zuordnungen des Buches und setzt die neuen Genres aus der Auswahl."""
+    """Löscht nur die alten Zuordnungen des Buches für den aktuellen User und setzt die neuen Genres."""
     with get_connection() as conn:
         cursor = conn.cursor()
         try:
-            # 1. Alle alten Verbindungen für dieses Buch kappen
-            cursor.execute("DELETE FROM book_genres WHERE book_id = ?", (book_id,))
+            # 1. NUR die Verbindungen für dieses Buch kappen, die dem aktuellen User gehören!
+            # Ein Subselect sorgt dafür, dass nur Genre-IDs gelöscht werden, die mit der user_id verknüpft sind.
+            cursor.execute("""
+                DELETE FROM book_genres 
+                WHERE book_id = ? 
+                  AND genre_id IN (SELECT id FROM genres WHERE user_id = ?)
+            """, (book_id, user_id))
             
             # 2. Die IDs der ausgewählten Genres holen und neu verknüpfen
             for g_name in genre_namen_liste:

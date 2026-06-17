@@ -246,4 +246,5 @@ def autor_detailseite(author_id: int):
                                     ui.label(t('ownership_given_away')).classes('text-[9px] text-red-500 dark:text-red-400 font-bold tracking-wide uppercase')
 
                             badge_color = 'teal' if b_status == 'READ' else ('orange' if b_status == 'READING' else 'slate')
-                            ui.badge(t(b_status.lower()), color=badge_color).classes('text-[10px] px-1.5 py-0.5 mt-1 align-self-start')
+                            sicherer_status = b_status if b_status is not None else 'UNREAD'
+                            ui.badge(t(sicherer_status.lower()), color=badge_color).classes('text-[10px] px-1.5 py-0.5 mt-1 align-self-start')
