@@ -136,6 +136,9 @@ def filter_anwenden():
     global gefilterte_buecher_cache, aktuelle_seite
     if not suchfeld: return  # Falls UI noch nicht bereit ist
     
+    memory.REGAL_MEMORY['shelf_page'] = 1
+    aktuelle_seite = 1
+
     suchtext = suchfeld.value.lower().strip() if suchfeld.value else ""
     f_status = status_filter.value
     f_format = format_filter.value
