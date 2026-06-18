@@ -1,7 +1,8 @@
 from contextlib import contextmanager
 from datetime import datetime
+import sys
 import random
-from nicegui import app, ui # app importiert
+from nicegui import app, ui
 import database
 import translations
 from translations import t
@@ -19,7 +20,6 @@ def global_vorschlag_modal_oeffnen():
 
 def quick_log_modal():
     """Öffnet ein globales Dialogfenster für den schnellen Lese-Eintrag – optimiert für Querformat."""
-    # REPARIERT: Nutzt die dynamische Property des Wrappers unmissverständlich über sys.modules
     current_user_id = sys.modules[__name__].aktiver_user_id
     
     user_ui = database.lade_user_settings(current_user_id)
@@ -98,6 +98,7 @@ def quick_log_modal():
 
     log_dialog.open()
 
+
 def navigation_regal_klick():
     from memory import REGAL_MEMORY
     
@@ -112,20 +113,19 @@ def navigation_regal_klick():
 
     ui.navigate.to('/')
 
+
 @contextmanager
 def basis_layout(titel_key: str = None):
     global _letztes_vorschlag_modal
     
-    # REPARIERT: Über sys.modules holen, um Namenskonflikte zu vermeiden
-    layout_wrapper = sys.modules[__name__]
-    current_user_id = layout_wrapper.aktiver_user_id
+    current_user_id = sys.modules[__name__].aktiver_user_id
     
     alle_user = database.lade_alle_user()
     user_options = {u[0]: u[1] for u in alle_user}
     
     if current_user_id not in user_options and user_options:
         current_user_id = list(user_options.keys())[0]
-        layout_wrapper.aktiver_user_id = current_user_id
+        sys.modules[__name__].aktiver_user_id = current_user_id
 
     user_ui = database.lade_user_settings(current_user_id)
     is_dark = user_ui['dark_mode']
@@ -260,8 +260,7 @@ def basis_layout(titel_key: str = None):
                 ui.button(icon='bookmark_add', on_click=quick_log_modal).props('round flat dense size=md').classes('text-emerald-400 hover:bg-slate-700').tooltip(t('quick_log_title'))
 
                 def user_wechseln(e):
-                    # REPARIERT: Schreibt sicher über den Wrapper
-                    layout_wrapper.aktiver_user_id = e.value
+                    app.storage.user['aktiver_user_id'] = e.value
                     ui.run_javascript('window.location.reload()')
 
                 ui.select(options=user_options, value=current_user_id, on_change=user_wechseln).props('dark dense options-dense borderless').classes('w-36 text-white text-sm font-bold bg-slate-700 px-2 py-1 rounded')
@@ -269,10 +268,9 @@ def basis_layout(titel_key: str = None):
 
                 def sprache_wechseln(e):
                     app.storage.user['aktuelle_sprache'] = e.value
-                    translations.aktuelle_sprache = e.value  # Synchronisiert es für den aktuellen Klick
+                    translations.aktuelle_sprache = e.value
                     ui.run_javascript('window.location.reload()')
 
-                # REPARIERT: value liest live über den Wrapper
                 ui.select(options={'de': '🇩🇪 DE', 'en': '🇬🇧 EN'}, 
                         value=sys.modules[__name__].aktuelle_sprache, 
                         on_change=sprache_wechseln) \
@@ -300,8 +298,7 @@ def basis_layout(titel_key: str = None):
                 ui.label(t('User')).classes('text-xs text-slate-400 uppercase tracking-wider font-semibold')
                 
                 def mobile_user_wechseln(e):
-                    # REPARIERT: Schreibt sicher über den Wrapper
-                    layout_wrapper.aktiver_user_id = e.value
+                    app.storage.user['aktiver_user_id'] = e.value
                     ui.run_javascript('window.location.reload()')
                 
                 ui.select(options=user_options, value=current_user_id, on_change=mobile_user_wechseln) \
@@ -312,10 +309,9 @@ def basis_layout(titel_key: str = None):
                 
                 def mobile_sprache_wechseln(e):
                     app.storage.user['aktuelle_sprache'] = e.value
-                    translations.aktuelle_sprache = e.value  # Synchronisiert es für den aktuellen Klick
+                    translations.aktuelle_sprache = e.value
                     ui.run_javascript('window.location.reload()')
 
-                # REPARIERT: value liest jetzt live den session-basierten Wert des Wrappers
                 ui.select(options={'de': '🇩🇪 Deutsch', 'en': '🇬🇧 English'}, 
                         value=sys.modules[__name__].aktuelle_sprache, 
                         on_change=mobile_sprache_wechseln) \
@@ -350,16 +346,12 @@ def basis_layout(titel_key: str = None):
 
 
 # =========================================================================
-# MAGIC SESSION-WRAPPER (Version 0.6.4 - Bereinigt)
+# MAGIC SESSION-WRAPPER (Version 0.6.4 - Bereinigt ohne Authelia-Zwang)
 # =========================================================================
-import sys
-from nicegui import app
-
 class LayoutModuleWrapper:
     def __init__(self, wrapped_module):
         self._wrapped_module = wrapped_module
 
-    # --- USER-ID ---
     @property
     def aktiver_user_id(self):
         return app.storage.user.get('aktiver_user_id', 1)
@@ -368,17 +360,14 @@ class LayoutModuleWrapper:
     def aktiver_user_id(self, value):
         app.storage.user['aktiver_user_id'] = value
 
-    # --- SPRACHE ---
     @property
     def aktuelle_sprache(self):
-        # Einfach stur aus der Session lesen. Kein Überschreiben von Modul-Variablen mehr!
         return app.storage.user.get('aktuelle_sprache', 'de')
 
     @aktuelle_sprache.setter
     def aktuelle_sprache(self, value):
         app.storage.user['aktuelle_sprache'] = value
 
-    # Alles andere normal durchreichen
     def __getattr__(self, name):
         return getattr(self._wrapped_module, name)
 

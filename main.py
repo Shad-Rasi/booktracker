@@ -384,6 +384,34 @@ def hauptseite():
 
         ui.context.client.on_connect(initialisiere_scroll_stand)
 
+from fastapi import Request
+
+# === PROXY MIDDLEWARE FÜR NICEGUI ===
+## If you use a proxy (e.g. authelia), here you check if the proxy user is in booktracker
+## If the user exists, the user will be chosen automatically
+@app.middleware("http")
+async def proxy_header_middleware(request: Request, call_next):
+    # Wir holen den Header direkt aus dem echten HTTP-Request
+    proxy_user = request.headers.get("remote-user") or request.headers.get("Remote-User")
+    
+    if proxy_user:
+        proxy_user = proxy_user.strip().lower()
+        try:
+            alle_user = database.lade_alle_user()
+            for u_id, u_name in alle_user:
+                if u_name.strip().lower() == proxy_user:
+                   
+                    request.session['aktiver_user_id'] = u_id
+                    
+                    app.storage.user['aktiver_user_id'] = u_id
+                    break
+        except Exception as e:
+            print(f"Fehler in Middleware-Datenbankabfrage: {e}")
+
+    response = await call_next(request)
+    return response
+
+
 ui.run(
     port=int(os.getenv("PORT", 8080)),
     title="Booktracker",
