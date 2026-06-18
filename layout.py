@@ -105,6 +105,21 @@ def quick_log_modal():
 
     log_dialog.open()
 
+def navigation_regal_klick():
+    # Jetzt importieren wir absolut sicher aus der neutralen memory.py:
+    from memory import REGAL_MEMORY
+    
+    REGAL_MEMORY['shelf_page'] = 1
+    REGAL_MEMORY['search_text'] = ''
+    REGAL_MEMORY['filter_status'] = 'ALL'
+    REGAL_MEMORY['filter_format'] = 'ALL'
+    REGAL_MEMORY['filter_ownership'] = 'ALL'
+    REGAL_MEMORY['filter_location'] = 'ALL'
+    REGAL_MEMORY['filter_genre'] = 'ALL'
+    REGAL_MEMORY['filter_sort'] = 'title_asc'
+
+    ui.navigate.to('/')
+
 @contextmanager
 def basis_layout(titel_key: str = None):
     global aktiver_user_id, _letztes_vorschlag_modal
@@ -191,7 +206,7 @@ def basis_layout(titel_key: str = None):
                 with ui.link('', '/').classes('flex items-center no-underline hover:opacity-80 transition-opacity nav-title-zone'):
                     ui.image('/static/favicon.png').classes('w-10 h-10 rounded-md object-cover shadow-sm bg-white p-0.5 mr-2')
 
-                ui.link(t('my_shelf'), '/').classes('text-white hover:text-slate-300 no-underline text-lg')
+                ui.link(t('my_shelf'), '#').classes('text-white hover:text-slate-300 no-underline text-lg').on('click', navigation_regal_klick)
                 ui.link(t('authors'), '/authors').classes('text-white hover:text-slate-300 no-underline text-lg')
                 ui.link(t('series'), '/series').classes('text-white hover:text-slate-300 no-underline text-lg')
                 ui.link(t('genres'), '/genres').classes('text-white hover:text-slate-300 no-underline text-lg')

@@ -40,6 +40,8 @@ import reading_calendar
 import settings
 import series
 import genres
+import memory
+from memory import REGAL_MEMORY
 
 # Globale Variablen für UI-Referenzen und Cache
 kachel_container = None
@@ -142,20 +144,25 @@ def filter_anwenden():
     f_genre = genre_filter.value  
     f_sort = sort_filter.value
 
-    REGAL_MEMORY['search_text'] = suchfeld.value if suchfeld.value else ""
-    REGAL_MEMORY['filter_status'] = f_status
-    REGAL_MEMORY['filter_format'] = f_format
-    REGAL_MEMORY['filter_ownership'] = f_ownership
-    REGAL_MEMORY['filter_location'] = f_location
-    REGAL_MEMORY['filter_genre'] = f_genre  
-    REGAL_MEMORY['filter_sort'] = f_sort
+    # =========================================================================
+    # JETZT REPARIERT: Werte direkt in das zentrale memory-Modul schreiben!
+    # =========================================================================
+    memory.REGAL_MEMORY['search_text'] = suchfeld.value if suchfeld.value else ""
+    memory.REGAL_MEMORY['filter_status'] = f_status
+    memory.REGAL_MEMORY['filter_format'] = f_format
+    memory.REGAL_MEMORY['filter_ownership'] = f_ownership
+    memory.REGAL_MEMORY['filter_location'] = f_location
+    memory.REGAL_MEMORY['filter_genre'] = f_genre  
+    memory.REGAL_MEMORY['filter_sort'] = f_sort
+    # =========================================================================
 
     gefiltert = []
     for b in alle_buecher_cache:
         if suchtext and (suchtext not in b['title'].lower() and 
                          suchtext not in (b['subtitle'] or '').lower() and 
                          suchtext not in b['author'].lower() and
-                         suchtext not in (b['reihen_anzeige'] or '').lower()):
+                         suchtext not in (b['reihen_anzeige'] or '').lower() and
+                         suchtext not in (b['isbn_13'] or '').lower()):
             continue
         if f_status != 'ALL' and b['status'] != f_status:
             continue
@@ -212,10 +219,10 @@ def kacheln_rendern():
             async def kachel_klick(b=buch):
                 try:
                     scroll_y = await ui.run_javascript('window.pageYOffset || document.documentElement.scrollTop')
-                    REGAL_MEMORY['shelf_scroll'] = int(scroll_y)
+                    memory.REGAL_MEMORY['shelf_scroll'] = int(scroll_y)
                 except Exception:
-                    REGAL_MEMORY['shelf_scroll'] = 0
-                REGAL_MEMORY['shelf_page'] = aktuelle_seite
+                    memory.REGAL_MEMORY['shelf_scroll'] = 0
+                memory.REGAL_MEMORY['shelf_page'] = aktuelle_seite
                 ui.navigate.to(f'/book/{b["id"]}')
 
             card_style = 'border: 1px dashed #ef4444;' if buch['ownership'] == 'GIVEN_AWAY' else ''
@@ -261,7 +268,7 @@ def paginierung_rendern():
         def seite_wechseln(neue_seite):
             global aktuelle_seite
             aktuelle_seite = neue_seite
-            REGAL_MEMORY['shelf_page'] = neue_seite
+            memory.REGAL_MEMORY['shelf_page'] = neue_seite
             kacheln_rendern()
             paginierung_rendern()
             ui.run_javascript('window.scrollTo({top: 0, behavior: "smooth"});')
@@ -280,7 +287,23 @@ def hauptseite():
     alle_buecher_cache = formatierte_daten_holen()
     regale = database.lade_alle_regale()
     globale_genres = database.lade_alle_genres(layout.aktiver_user_id)
-    aktuelle_seite = REGAL_MEMORY['shelf_page']
+    aktuelle_seite = memory.REGAL_MEMORY['shelf_page']
+
+    # =========================================================================
+    # MULTI-USER ABSICHERUNG: Ungültige Filterwerte beim Nutzerwechsel abfangen
+    # =========================================================================
+    
+    # 1. Standort/Regal validieren
+    erlaubte_regal_ids = {r_id for r_id, _ in regale}
+    if REGAL_MEMORY['filter_location'] != 'ALL' and REGAL_MEMORY['filter_location'] not in erlaubte_regal_ids:
+        REGAL_MEMORY['filter_location'] = 'ALL'
+
+    # 2. Genre validieren
+    erlaubte_genre_namen = {g_name for _, g_name in globale_genres}
+    if REGAL_MEMORY['filter_genre'] != 'ALL' and REGAL_MEMORY['filter_genre'] not in erlaubte_genre_namen:
+        REGAL_MEMORY['filter_genre'] = 'ALL'
+        
+    # =========================================================================
 
     with basis_layout('my_shelf'):
         with ui.row().classes('w-full justify-between items-center mb-4'):
@@ -300,7 +323,7 @@ def hauptseite():
                 with ui.row().classes('w-full items-center gap-2 flex-col md:flex-row flex-nowrap'):
                     
                     # Suchfeld: Volle Breite auf Mobile (w-full), flex-1 auf Desktop
-                    suchfeld = ui.input(placeholder=t('search'), value=REGAL_MEMORY['search_text']).classes('w-full md:flex-1 px-1').props(f'clearable icon=search outlined debounce=200 {"dark" if is_dark else ""}')\
+                    suchfeld = ui.input(placeholder=t('search'), value=memory.REGAL_MEMORY['search_text']).classes('w-full md:flex-1 px-1').props(f'clearable icon=search outlined debounce=200 {"dark" if is_dark else ""}')\
                         .on_value_change(lambda: filter_anwenden())
 
                     # --- HIER IST DIE NEUE MOBIL-REIHE ---
@@ -310,7 +333,7 @@ def hauptseite():
                         
                         # Sortierung: Nimmt auf dem Handy den restlichen Platz ein (flex-1), am PC eine feste Breite (md:w-56)
                         sort_opts = {'title_asc': '🔤 ' + t('sort_title'), 'author_asc': '✍️ ' + t('sort_author'), 'pages_desc': '📄 ' + t('sort_pages_desc'), 'pages_asc': '📄 ' + t('sort_pages_asc'), 'rating_desc': '⭐ ' + t('sort_rating')}
-                        sort_filter = ui.select(options=sort_opts, value=REGAL_MEMORY['filter_sort'], on_change=lambda: filter_anwenden()).classes('flex-1 md:w-56').props(f'outlined dense {dark_prop}')
+                        sort_filter = ui.select(options=sort_opts, value=memory.REGAL_MEMORY['filter_sort'], on_change=lambda: filter_anwenden()).classes('flex-1 md:w-56').props(f'outlined dense {dark_prop}')
 
                         # REPARIERT: Tooltip wird jetzt über t() dynamisch übersetzt
                         btn_reset = ui.button(icon='filter_alt_off', on_click=alle_filter_zuruecksetzen).props('flat round color="negative"').tooltip(t('clear_filters'))
@@ -321,24 +344,24 @@ def hauptseite():
                 
             # --- ZEILE 2: Die erweiterten Filter (Status, Format etc.) ---
             with ui.row().classes('w-full gap-4 p-2 bg-slate-50 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700 transition-all flex-wrap') as filter_sektion:
-                filter_sektion.visible = any([REGAL_MEMORY['filter_status'] != 'ALL', REGAL_MEMORY['filter_format'] != 'ALL', REGAL_MEMORY['filter_ownership'] != 'ALL', REGAL_MEMORY['filter_location'] != 'ALL', REGAL_MEMORY['filter_genre'] != 'ALL'])
+                filter_sektion.visible = any([memory.REGAL_MEMORY['filter_status'] != 'ALL', REGAL_MEMORY['filter_format'] != 'ALL', REGAL_MEMORY['filter_ownership'] != 'ALL', REGAL_MEMORY['filter_location'] != 'ALL', REGAL_MEMORY['filter_genre'] != 'ALL'])
                 
                 status_opts = {'ALL': '🔍 ' + t('status') + ': ' + t('none'), 'UNREAD': t('unread'), 'READING': t('reading'), 'READ': t('read')}
-                status_filter = ui.select(options=status_opts, value=REGAL_MEMORY['filter_status'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense {dark_prop}')
+                status_filter = ui.select(options=status_opts, value=memory.REGAL_MEMORY['filter_status'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense {dark_prop}')
                 
                 format_opts = {'ALL': '📱 ' + t('format') + ': ' + t('none'), 'PHYSICAL': t('PHYSICAL'), 'AUDIOBOOK': t('AUDIOBOOK'), 'EBOOK': t('EBOOK')}
-                format_filter = ui.select(options=format_opts, value=REGAL_MEMORY['filter_format'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense {dark_prop}')
+                format_filter = ui.select(options=format_opts, value=memory.REGAL_MEMORY['filter_format'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense {dark_prop}')
                 
                 own_opts = {'ALL': '🤝 ' + t('ownership') + ': ' + t('none'), 'OWNED': t('OWNED'), 'BORROWED': t('BORROWED'), 'LENT': t('LENT'), 'GIVEN_AWAY': t('ownership_given_away')}
-                ownership_filter = ui.select(options=own_opts, value=REGAL_MEMORY['filter_ownership'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense {dark_prop}')
+                ownership_filter = ui.select(options=own_opts, value=memory.REGAL_MEMORY['filter_ownership'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense {dark_prop}')
                 
                 regale_opts = {'ALL': '📍 ' + t('location') + ': ' + t('none')}
                 for r_id, r_name in regale: regale_opts[r_id] = r_name
-                location_filter = ui.select(options=regale_opts, value=REGAL_MEMORY['filter_location'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense {dark_prop}')
+                location_filter = ui.select(options=regale_opts, value=memory.REGAL_MEMORY['filter_location'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense {dark_prop}')
 
                 genre_opts = {'ALL': '🏷️ ' + t('manage_genres') + ': ' + t('none')}
                 for g_id, g_name in globale_genres: genre_opts[g_name] = g_name
-                genre_filter = ui.select(options=genre_opts, value=REGAL_MEMORY['filter_genre'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense with-input {dark_prop}')
+                genre_filter = ui.select(options=genre_opts, value=memory.REGAL_MEMORY['filter_genre'], on_change=lambda: filter_anwenden()).classes('flex-1 min-w-[180px] px-1').props(f'outlined dense with-input {dark_prop}')
         
         kachel_container = ui.element('div').classes('w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-6')
         paginierungs_container = ui.row().classes('w-full justify-center items-center gap-2 mt-8 mb-4')
