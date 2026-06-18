@@ -1,13 +1,10 @@
 from contextlib import contextmanager
 from datetime import datetime
 import random
-from nicegui import ui
+from nicegui import app, ui # app importiert
 import database
 import translations
 from translations import t
-
-# Sitzungsspeicher für den aktuell ausgewählten User (Standard: ID 1)
-aktiver_user_id = 1
 
 # Globale Referenz für das Vorschlagsmodal, damit andere Module es öffnen können
 _letztes_vorschlag_modal = None
@@ -22,9 +19,10 @@ def global_vorschlag_modal_oeffnen():
 
 def quick_log_modal():
     """Öffnet ein globales Dialogfenster für den schnellen Lese-Eintrag – optimiert für Querformat."""
-    global aktiver_user_id
+    # REPARIERT: Nutzt die dynamische Property des Wrappers unmissverständlich über sys.modules
+    current_user_id = sys.modules[__name__].aktiver_user_id
     
-    user_ui = database.lade_user_settings(aktiver_user_id)
+    user_ui = database.lade_user_settings(current_user_id)
     is_dark = user_ui['dark_mode']
     sprache = translations.aktuelle_sprache
     
@@ -32,7 +30,7 @@ def quick_log_modal():
     text_main = 'text-slate-100' if is_dark else 'text-slate-700'
     input_prop = 'dark' if is_dark else ''
     
-    aktive_buecher = database.lade_aktuelle_buecher(aktiver_user_id)
+    aktive_buecher = database.lade_aktuelle_buecher(current_user_id)
     
     if not aktive_buecher:
         ui.notify(t('quick_log_no_books'), type='warning')
@@ -40,11 +38,9 @@ def quick_log_modal():
 
     buch_optionen = {b_id: b_title for b_id, b_title in aktive_buecher}
 
-    # REPARIERT: max-h-[85vh] und overflow-y-auto zwingen das Fenster bei geringer Höhe zum sauberen Abwärtsscrollen
     with ui.dialog() as log_dialog, ui.card().classes(f'w-full max-w-md max-h-[85vh] p-4 md:p-6 flex flex-col gap-4 overflow-y-auto no-scrollbar {bg_card}'):
         ui.label(t('quick_log_title')).classes(f'text-lg font-bold {text_main} mb-1 shrink-0')
         
-        # Der Inhaltsbereich umschließt die Eingabefelder und erzwingt das Untereinanderstehen (flex-col)
         with ui.column().classes('w-full flex flex-col gap-3'):
             buch_select = ui.select(options=buch_optionen, label=t('select_book')).classes('w-full').props(f'outlined dense {input_prop} popup-content-class="dark"' if is_dark else 'outlined dense')
             seiten_input = ui.number(label=t('pages_read_to'), value=None, min=1).classes('w-full').props(f'outlined dense {input_prop}')
@@ -61,7 +57,6 @@ def quick_log_modal():
         async def schnell_log_speichern():
             b_id = buch_select.value
             neue_seite = seiten_input.value
-            
             gewaehltes_datum = datum_input.value.replace('/', '-') if datum_input.value else datetime.now().strftime('%Y-%m-%d')
             
             if not b_id or not neue_seite:
@@ -74,20 +69,19 @@ def quick_log_modal():
                 row = cursor.fetchone()
                 max_pages = row[0] if row and row[0] else 0
 
-            erfolg, meldung = database.trage_lese_log_ein(aktiver_user_id, b_id, int(neue_seite), gewaehltes_datum)
+            erfolg, meldung = database.trage_lese_log_ein(current_user_id, b_id, int(neue_seite), gewaehltes_datum)
             
             if erfolg:
                 ui.notify(f"{t('entry_saved')} +{meldung} {t('pages_short')}.", type='positive')
                 if max_pages > 0 and int(neue_seite) >= max_pages:
-                    database.schliesse_aktiven_zyklus_ab(aktiver_user_id, b_id, end_datum=gewaehltes_datum)
+                    database.schliesse_aktiven_zyklus_ab(current_user_id, b_id, end_datum=gewaehltes_datum)
                     with database.get_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE user_books SET status = 'READ' WHERE user_id = ? AND book_id = ?", (aktiver_user_id, b_id))
+                        cursor.execute("UPDATE user_books SET status = 'READ' WHERE user_id = ? AND book_id = ?", (current_user_id, b_id))
                         conn.commit()
                     ui.notify(f"{t('book_finished')} 🎉", type='positive')
 
-                    # Spaßprojekt-Trigger beim Schnellbuchen, falls das Buch beendet wurde
-                    user_settings = database.lade_user_settings(aktiver_user_id)
+                    user_settings = database.lade_user_settings(current_user_id)
                     if user_settings.get('buch_vorschlag_aktiv', False):
                         log_dialog.close()
                         ui.timer(0.5, global_vorschlag_modal_oeffnen, once=True)
@@ -98,7 +92,6 @@ def quick_log_modal():
             else:
                 ui.notify(meldung, type='warning')
 
-        # REPARIERT: flex-wrap und mt-auto halten die Buttons sauber am unteren Rand der Karte
         with ui.row().classes('w-full justify-end gap-2 mt-auto pt-2 flex-wrap shrink-0'):
             ui.button(t('cancel'), on_click=log_dialog.close).classes('text-slate-500').props('flat')
             ui.button(t('save'), on_click=schnell_log_speichern).classes('bg-emerald-600 text-white px-4')
@@ -106,7 +99,6 @@ def quick_log_modal():
     log_dialog.open()
 
 def navigation_regal_klick():
-    # Jetzt importieren wir absolut sicher aus der neutralen memory.py:
     from memory import REGAL_MEMORY
     
     REGAL_MEMORY['shelf_page'] = 1
@@ -122,15 +114,20 @@ def navigation_regal_klick():
 
 @contextmanager
 def basis_layout(titel_key: str = None):
-    global aktiver_user_id, _letztes_vorschlag_modal
+    global _letztes_vorschlag_modal
+    
+    # REPARIERT: Über sys.modules holen, um Namenskonflikte zu vermeiden
+    layout_wrapper = sys.modules[__name__]
+    current_user_id = layout_wrapper.aktiver_user_id
     
     alle_user = database.lade_alle_user()
     user_options = {u[0]: u[1] for u in alle_user}
     
-    if aktiver_user_id not in user_options and user_options:
-        aktiver_user_id = list(user_options.keys())[0]
+    if current_user_id not in user_options and user_options:
+        current_user_id = list(user_options.keys())[0]
+        layout_wrapper.aktiver_user_id = current_user_id
 
-    user_ui = database.lade_user_settings(aktiver_user_id)
+    user_ui = database.lade_user_settings(current_user_id)
     is_dark = user_ui['dark_mode']
     ui.dark_mode().value = is_dark
 
@@ -141,8 +138,6 @@ def basis_layout(titel_key: str = None):
     text_modal_main = 'text-slate-100' if is_dark else 'text-slate-800'
     select_modal_prop = 'dark popup-content-class="dark"' if is_dark else ''
 
-    # CSS-Injektion für radikalen und unblockierbaren Responsive-Support
-    # CSS-Injektion für feine App-Optimierungen und BOMBENSICHERE RESPONSIVE-TRENNUNG
     ui.add_head_html('''
         <style>
             body {
@@ -157,22 +152,14 @@ def basis_layout(titel_key: str = None):
             .content-safe {
                 padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
             }
-            
-            /* --- REPARIERT: RADIKALE TRENNUNG OHNE NICGUI-VERZÖGERUNG --- */
-            
-            /* Am PC/Tablet: Desktop an, Mobil gnadenlos aus */
             @media (min-width: 768px) {
                 .desktop-nav { display: flex !important; }
                 .mobile-nav-container { display: none !important; }
             }
-            
-            /* Am Smartphone Hochkant: Desktop aus, Mobil an */
             @media (max-width: 767px) {
                 .desktop-nav { display: none !important; }
                 .mobile-nav-container { display: block !important; }
             }
-            
-            /* Am Smartphone Querformat */
             @media (max-width: 950px) and (max-height: 500px) {
                 .mobile-nav-container { display: none !important; }
                 .desktop-nav { 
@@ -185,7 +172,6 @@ def basis_layout(titel_key: str = None):
         </style>
     ''')
     
-    # NAVIGATIONSMAPPING FÜR MOBILE TAB-BAR
     nav_items = [
         ('menu_book', 'my_shelf', '/'),
         ('people', 'authors', '/authors'),
@@ -196,11 +182,7 @@ def basis_layout(titel_key: str = None):
         ('settings', 'settings', '/settings')
     ]
 
-# =========================================================================
-    # --- DESKTOP HEADER (Flexbox repariert) ---
-    # =========================================================================
     with ui.element('div').classes('w-full desktop-nav').style('display: none;'):
-        # REPARIERT: flex flex-row justify-between items-center sorgt dafür, dass die Buttons rechts auf der gleichen Linie bleiben
         with ui.element('header').classes('w-full bg-slate-800 text-white p-4 flex flex-row justify-between items-center shadow-md z-[100] fixed top-0 left-0 right-0'):
             with ui.row().classes('gap-6 font-medium items-center'):
                 with ui.link('', '/').classes('flex items-center no-underline hover:opacity-80 transition-opacity nav-title-zone'):
@@ -219,7 +201,7 @@ def basis_layout(titel_key: str = None):
                     with ui.dialog().classes('w-full max-w-md') as vorschlag_modal, ui.card().classes(f'w-full p-6 gap-4 {bg_modal_card}'):
                         ui.label(t('book_suggestion_title')).classes(f'text-lg font-bold {text_modal_main} mb-1')
                         
-                        globale_genres = database.lade_alle_genres(aktiver_user_id)
+                        globale_genres = database.lade_alle_genres(current_user_id)
                         genre_opts = {'ALL': '🎲 ' + t('book_suggestion_all')}
                         for g_id, g_name in globale_genres:
                             genre_opts[g_name] = f"🏷️ {g_name}"
@@ -229,7 +211,7 @@ def basis_layout(titel_key: str = None):
                         
                         def vorschlag_generieren():
                             ergebnis_container.clear()
-                            buch = database.hole_zufaelliges_buch_vorschlag(aktiver_user_id, genre_auswahl.value)
+                            buch = database.hole_zufaelliges_buch_vorschlag(current_user_id, genre_auswahl.value)
                             
                             with ergebnis_container:
                                 if not buch:
@@ -278,90 +260,77 @@ def basis_layout(titel_key: str = None):
                 ui.button(icon='bookmark_add', on_click=quick_log_modal).props('round flat dense size=md').classes('text-emerald-400 hover:bg-slate-700').tooltip(t('quick_log_title'))
 
                 def user_wechseln(e):
-                    global aktiver_user_id
-                    aktiver_user_id = e.value
+                    # REPARIERT: Schreibt sicher über den Wrapper
+                    layout_wrapper.aktiver_user_id = e.value
                     ui.run_javascript('window.location.reload()')
 
-                ui.select(options=user_options, value=aktiver_user_id, on_change=user_wechseln).props('dark dense options-dense borderless').classes('w-36 text-white text-sm font-bold bg-slate-700 px-2 py-1 rounded')
+                ui.select(options=user_options, value=current_user_id, on_change=user_wechseln).props('dark dense options-dense borderless').classes('w-36 text-white text-sm font-bold bg-slate-700 px-2 py-1 rounded')
                 ui.separator().props('vertical').classes('bg-slate-600 h-6')
 
                 def sprache_wechseln(e):
-                    translations.aktuelle_sprache = e.value
+                    app.storage.user['aktuelle_sprache'] = e.value
+                    translations.aktuelle_sprache = e.value  # Synchronisiert es für den aktuellen Klick
                     ui.run_javascript('window.location.reload()')
 
-                ui.select(options={'de': '🇩🇪 DE', 'en': '🇬🇧 EN'}, value=translations.aktuelle_sprache, on_change=sprache_wechseln).props('dark dense options-dense borderless').classes('w-20 text-white text-sm')
+                # REPARIERT: value liest live über den Wrapper
+                ui.select(options={'de': '🇩🇪 DE', 'en': '🇬🇧 EN'}, 
+                        value=sys.modules[__name__].aktuelle_sprache, 
+                        on_change=sprache_wechseln) \
+                    .props('dark dense options-dense borderless').classes('w-20 text-white text-sm')
 
-    # =========================================================================
-    # --- SMARTPHONE TOP-BAR (KORRIGIERT) ---
-    # =========================================================================
-    # =========================================================================
-    # --- SMARTPHONE TOP-BAR (Mit dynamischer User-Anzeige) ---
-    # =========================================================================
     with ui.element('div').classes('w-full mobile-nav-container').style('display: none;'):
         with ui.element('div').classes('fixed top-3 right-3 z-[101] flex items-center gap-2'):
-            
-            # Casino-Würfel oben rechts (falls in den Settings aktiv)
             if user_ui.get('buch_vorschlag_aktiv', False):
                 ui.button(icon='casino', on_click=global_vorschlag_modal_oeffnen) \
                     .props('round flat dense size=sm') \
                     .classes('text-blue-500 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md shadow-sm border border-slate-200 dark:border-slate-700')
 
-            # Das Steuerzentrum als runder Avatar-Button statt dem alten Icon
-            # Alternative Variante: Text + Icon nebeneinander
             with ui.button(icon='manage_accounts', on_click=lambda: steuerzentrum_modal.open()) \
                 .props('flat dense size=sm') \
                 .classes('text-slate-600 dark:text-slate-300 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md shadow-sm border border-slate-200 dark:border-slate-700 px-2 rounded-full flex items-center gap-1'):
                 
-                # Zeigt den Namen in klein neben dem Zahnrad-Männchen an
-                ui.label(user_options.get(aktiver_user_id, t('user'))).classes('text-[11px] font-semibold tracking-wide pr-1')
+                ui.label(user_options.get(current_user_id, t('user'))).classes('text-[11px] font-semibold tracking-wide pr-1')
 
-        # Das Overlay-Menü für User & Sprache
         with ui.dialog() as steuerzentrum_modal, ui.card().classes(f'w-full max-w-sm p-5 gap-4 rounded-2xl shadow-xl {bg_modal_card}'):
             with ui.row().classes('w-full justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2'):
                 ui.label(t('settings')).classes(f'text-base font-bold {text_modal_main}')
                 ui.button(icon='close', on_click=steuerzentrum_modal.close).props('flat round dense size=sm').classes('text-slate-400')
 
-            # Sektion 1: User wechseln
             with ui.column().classes('w-full gap-1'):
                 ui.label(t('User')).classes('text-xs text-slate-400 uppercase tracking-wider font-semibold')
                 
                 def mobile_user_wechseln(e):
-                    global aktiver_user_id
-                    aktiver_user_id = e.value
+                    # REPARIERT: Schreibt sicher über den Wrapper
+                    layout_wrapper.aktiver_user_id = e.value
                     ui.run_javascript('window.location.reload()')
                 
-                ui.select(options=user_options, value=aktiver_user_id, on_change=mobile_user_wechseln) \
+                ui.select(options=user_options, value=current_user_id, on_change=mobile_user_wechseln) \
                     .props(f'outlined dense {select_modal_prop}').classes('w-full text-sm')
 
-            # Sektion 2: Sprache wechseln
             with ui.column().classes('w-full gap-1 mt-2'):
                 ui.label(t('language')).classes('text-xs text-slate-400 uppercase tracking-wider font-semibold')
                 
                 def mobile_sprache_wechseln(e):
-                    translations.aktuelle_sprache = e.value
+                    app.storage.user['aktuelle_sprache'] = e.value
+                    translations.aktuelle_sprache = e.value  # Synchronisiert es für den aktuellen Klick
                     ui.run_javascript('window.location.reload()')
-                
-                ui.select(options={'de': '🇩🇪 Deutsch', 'en': '🇬🇧 English'}, value=translations.aktuelle_sprache, on_change=mobile_sprache_wechseln) \
+
+                # REPARIERT: value liest jetzt live den session-basierten Wert des Wrappers
+                ui.select(options={'de': '🇩🇪 Deutsch', 'en': '🇬🇧 English'}, 
+                        value=sys.modules[__name__].aktuelle_sprache, 
+                        on_change=mobile_sprache_wechseln) \
                     .props(f'outlined dense {select_modal_prop}').classes('w-full text-sm')
 
-    # =========================================================================
-    # --- FIXED SMARTPHONE FOOTER (Repariert: ui.element('footer') statt ui.footer) ---
-    # =========================================================================
-    # REPARIERT: Nutzt jetzt die Klasse mobile-nav-container und startet ebenfalls standardmäßig unsichtbar
     with ui.element('div').classes('w-full mobile-nav-container').style('display: none;'):
         with ui.element('footer').classes('flex items-center justify-around px-1 pt-1 border-t shadow-lg fixed bottom-0 left-0 right-0 z-[100] footer-safe ' + 
-                                         ('bg-slate-800 border-slate-700 text-white' if is_dark else 'bg-white border-slate-200 text-slate-700')):# Holt den aktuellen URL-Pfad (z.B. '/' oder '/author/2')
+                                         ('bg-slate-800 border-slate-700 text-white' if is_dark else 'bg-white border-slate-200 text-slate-700')):
             aktueller_pfad = ui.context.client.page.path
             
             for icon, lang_key, route in nav_items:
-                # BOMBENSICHERE PRÜFUNG: Aktiv, wenn der Key im Titel steckt ODER die URL mit der Route startet
                 ist_aktiv = False
                 if route == '/':
-                    # Die Startseite ist nur aktiv, wenn wir exakt auf '/' sind
                     ist_aktiv = (aktueller_pfad == '/') or (titel_key == 'my_shelf')
                 else:
-                    # Unterseiten (wie /authors) sind auch aktiv, wenn wir tiefer in der Route sind (z.B. /author/2)
-                    # Wir bereinigen das 's' am Ende der Route, damit /authors auch /author/2 matcht
                     route_base = route.rstrip('s')
                     ist_aktiv = (lang_key in str(titel_key)) or (aktueller_pfad.startswith(route_base))
                 
@@ -374,11 +343,43 @@ def basis_layout(titel_key: str = None):
                     ui.icon(icon, size='xs').classes(f'{icon_color} transition-transform')
                     ui.label(t(lang_key)).classes(f'text-[8px] tracking-tight {text_color} line-clamp-1 text-center')
 
-            # Der Plus-Button für das Schnelleintragen von überall
             ui.button(icon='bookmark_add', on_click=quick_log_modal).props('flat round dense size=sm').classes('text-emerald-400 shrink-0 ml-1')
 
-    # =========================================================================
-    # --- INHALTS-CONTAINER (Mit pt-20 auf dem Desktop, da der Header jetzt fixiert ist) ---
-    # =========================================================================
     with ui.element('div').classes('w-full p-4 md:p-6 max-w-7xl mx-auto pt-2 md:pt-24 bg-slate-50 dark:bg-slate-900 content-safe'):
         yield
+
+
+# =========================================================================
+# MAGIC SESSION-WRAPPER (Version 0.6.4 - Bereinigt)
+# =========================================================================
+import sys
+from nicegui import app
+
+class LayoutModuleWrapper:
+    def __init__(self, wrapped_module):
+        self._wrapped_module = wrapped_module
+
+    # --- USER-ID ---
+    @property
+    def aktiver_user_id(self):
+        return app.storage.user.get('aktiver_user_id', 1)
+
+    @aktiver_user_id.setter
+    def aktiver_user_id(self, value):
+        app.storage.user['aktiver_user_id'] = value
+
+    # --- SPRACHE ---
+    @property
+    def aktuelle_sprache(self):
+        # Einfach stur aus der Session lesen. Kein Überschreiben von Modul-Variablen mehr!
+        return app.storage.user.get('aktuelle_sprache', 'de')
+
+    @aktuelle_sprache.setter
+    def aktuelle_sprache(self, value):
+        app.storage.user['aktuelle_sprache'] = value
+
+    # Alles andere normal durchreichen
+    def __getattr__(self, name):
+        return getattr(self._wrapped_module, name)
+
+sys.modules[__name__] = LayoutModuleWrapper(sys.modules[__name__])

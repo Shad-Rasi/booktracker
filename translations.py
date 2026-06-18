@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime
+from nicegui import app
 
 # =========================================================================
 # 1. HAUPT-ÜBERSETZUNGS-DICTIONARY (Symmetrisch strukturiert)
@@ -707,10 +708,21 @@ TRANSLATIONS = {
 # =========================================================================
 aktuelle_sprache = 'de'
 
-
 def t(key: str) -> str:
-    """Hilfsfunktion zum Holen des übersetzten Textes."""
-    return TRANSLATIONS[aktuelle_sprache].get(key, key)
+    """Hilfsfunktion zum Holen des übersetzten Textes aus der jeweiligen Browser-Session."""
+    try:
+        # Hol die Sprache live aus der Session des aktuellen Browsers
+        sprache = app.storage.user.get('aktuelle_sprache', 'de')
+    except Exception:
+        # Fallback, falls der Server startet und noch kein Browser verbunden ist
+        sprache = 'de'
+        
+    # Sicherheits-Fallback: Falls aus irgendeinem Grund eine Sprache geladen wird, 
+    # die nicht in TRANSLATIONS existiert (z.B. durch alte Cookies)
+    if sprache not in TRANSLATIONS:
+        sprache = 'de'
+
+    return TRANSLATIONS[sprache].get(key, key)
 
 
 # Zentrale Sprachübersetzungen für Buchsprachen
