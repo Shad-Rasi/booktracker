@@ -12,6 +12,19 @@ import book_api
 import translations
 from layout import basis_layout
 from translations import t
+from datetime import datetime
+
+# Globaler Puffer für die Live-Log-Anzeige im UI
+UI_LOG_BUFFER = [t('logs_interface_initialized')]
+
+def ui_log(nachricht: str):
+    """Schreibt eine Zeile in das Docker-Terminal UND in den UI-Puffer."""
+    print(nachricht, flush=True) # Für Docker Desktop / VPS Terminal
+    zeit = datetime.now().strftime('%X')
+    UI_LOG_BUFFER.append(f"[{zeit}] {nachricht}")
+    # Puffer auf die letzten 100 Zeilen begrenzen, um RAM zu sparen
+    if len(UI_LOG_BUFFER) > 100:
+        UI_LOG_BUFFER.pop(0)
 
 # Helper-Funktionen (bleiben funktional exakt gleich)
 def status_uebersetzen(goodreads_shelf):
@@ -172,7 +185,13 @@ async def handle_upload(e, status_container, upload_element, is_dark):
             log_box.value = ""
             type(log_box).value = property(lambda self: self.text, lambda self, val: set_value(val))
 
-        asyncio.create_task(import_queue_verarbeiten(buecher_liste, lbl, progress, log_box, context.client))
+        # REPARIERT: Wir merken uns den Client fest, BEVOR der Task in den Hintergrund verschwindet
+        aktueller_client = context.client
+
+        async def queue_trigger():
+             await import_queue_verarbeiten(buecher_liste, lbl, progress, log_box, aktueller_client)
+        
+        asyncio.create_task(queue_trigger())
     except Exception as ex:
         ui.notify(f"{t('import_error_read')}: {str(ex)}", type='negative')
 
@@ -316,6 +335,18 @@ def werksreset_ausfuehren():
         ui.notify(f"Fehler beim Werksreset: {str(e)}", type='negative')
 
 
+# ==========================================
+# REPARIERT: BLOCKIERUNGSFREIES LOG-STREAMEN
+# ==========================================
+async def container_logs_streamen(log_label, scroll_element):
+    """Liest fortlaufend den internen Log-Puffer aus, ohne das System zu blockieren."""
+    while True:
+        # Den aktuellen Puffer rückwärts oder vorwärts zusammenfügen
+        log_label.text = "\n".join(UI_LOG_BUFFER)
+        scroll_element.scroll_to(percent=100, duration=0.2)
+        await asyncio.sleep(1.0) # Aktualisierung jede Sekunde
+
+
 @ui.page('/settings')
 def einstellungen_seite():
     user_ui = database.lade_user_settings(layout.aktiver_user_id)
@@ -334,309 +365,315 @@ def einstellungen_seite():
         ui.label(t('settings_title')).classes(f'text-2xl font-bold mb-2 {text_main}')
         ui.label(t('settings_subtitle')).classes(f'text-sm mb-6 {text_sub}')
         
-        # Das umschließende Master-Grid (Zweispaltig auf Desktops)
-        with ui.element('div').classes('w-full max-w-7xl grid grid-cols-1 md:grid-cols-2 gap-6 items-start'):
+        # ==========================================
+        # NEU: UNTERNAVIGATION (TAB-LEISTE)
+        # ==========================================
+        with ui.tabs().classes('w-full border-b border-slate-200 dark:border-slate-700 mb-6') as einstellung_tabs:
+            tab_allgemein = ui.tab(t('settings_tab_general'), icon='tune')
+            tab_daten = ui.tab(t('settings_tab_data'), icon='cloud_sync')
+            tab_logs = ui.tab(t('settings_tab_logs'), icon='terminal')
+
+        with ui.tab_panels(einstellung_tabs, value=tab_allgemein).classes('w-full bg-transparent p-0 no-scrollbar'):
             
-            # ==========================================
-            # SEKTION 1: UI & DARSTELLUNGS-EINSTELLUNGEN
-            # ==========================================
-            with ui.card().classes(f'w-full p-6 border shadow-sm col-span-full {bg_card}'):
-                ui.label(t('ui_design_title')).classes(f'text-lg font-bold {text_main} mb-2')
-                ui.label(t('ui_design_subtitle')).classes(f'text-xs {text_sub} -mt-2 mb-4')
+            # ------------------------------------------
+            # REITER 1: ALLGEMEINE EINSTELLUNGEN
+            # ------------------------------------------
+            with ui.tab_panel(tab_allgemein).classes('p-0 gap-6 grid grid-cols-1 md:grid-cols-2 items-start'):
                 
-                current_settings = database.lade_user_settings(layout.aktiver_user_id)
-                
-                # REPARIERT: Nimmt den vorschlag_switch.value Zustand jetzt sicher mit auf
-                async def ui_einstellungen_speichern():
-                    database.speichere_user_settings(
-                        layout.aktiver_user_id, 
-                        ansicht_select.value, 
-                        dark_switch.value,
-                        vorschlag_switch.value
-                    )
-                    if dark_switch.value:
-                        ui.dark_mode().enable()
-                    else:
-                        ui.dark_mode().disable()
-                    ui.notify(t('notify_saved'), type='positive', duration=1)
-                    await asyncio.sleep(0.2)
-                    ui.navigate.to('/settings')
-
-                with ui.row().classes('w-full items-center justify-between gap-4 flex-wrap mb-4'):
-                    view_opts = {
-                        'PAGINATED': f"📄 {t('view_paginated')}", 
-                        'INFINITE': f"📜 {t('view_infinite')}"
-                    }
-                    ansicht_select = ui.select(
-                        options=view_opts, 
-                        value=current_settings['view_mode'],
-                        label=t('shelf_view_mode'),
-                        on_change=ui_einstellungen_speichern
-                    ).classes('w-64 px-1').props(f'outlined dense {select_prop}')
+                # SEKTION 1: UI & DESIGN
+                with ui.card().classes(f'w-full p-6 border shadow-sm col-span-full {bg_card}'):
+                    ui.label(t('ui_design_title')).classes(f'text-lg font-bold {text_main} mb-2')
+                    ui.label(t('ui_design_subtitle')).classes(f'text-xs {text_sub} -mt-2 mb-4')
                     
-                    dark_switch = ui.switch(
-                        t('activate_darkmode'), 
-                        value=current_settings['dark_mode'],
-                        on_change=ui_einstellungen_speichern
-                    ).classes(f'font-medium {text_main}')
-
-                ui.separator().classes('my-3 dark:bg-slate-700')
-
-                # NEU: Der dedizierte Zeilen-Switch für dein Lese-Auslos-Spaßprojekt
-                with ui.row().classes('w-full items-center justify-between gap-4 flex-wrap mt-2'):
-                    with ui.column().classes('gap-0 flex-1 pr-4'):
-                        ui.label(t('settings_suggestion_title')).classes('font-bold text-sm text-slate-800 dark:text-slate-100')
-                        ui.label(t('settings_suggestion_desc')).classes('text-xs text-slate-400 leading-tight mt-0.5')
+                    current_settings = database.lade_user_settings(layout.aktiver_user_id)
                     
-                    vorschlag_switch = ui.switch(
-                        value=current_settings.get('buch_vorschlag_aktiv', False),
-                        on_change=ui_einstellungen_speichern
-                    ).props('color="blue"')
-
-            # ==========================================
-            # SEKTION 2: BENUTZERVERWALTUNG
-            # ==========================================
-            with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
-                ui.label(t('user_management')).classes(f'text-lg font-bold {text_main} mb-2')
-                
-                with ui.row().classes('w-full items-center gap-3 no-wrap mb-4'):
-                    neuer_user_input = ui.input(label=t('new_username')).classes('flex-1 px-1').props(f'outlined dense {dark_prop}')
-                    async def user_speichern():
-                        name = neuer_user_input.value.strip()
-                        if not name:
-                            ui.notify(t('error_empty_name'), type='warning')
-                            return
-                        if database.speichere_user_in_db(name):
-                            ui.notify(f'{t("user")} "{name}" {t("notify_user_added")}', type='positive')
-                            neuer_user_input.value = ''
-                            user_liste_refresh.refresh()
+                    async def ui_einstellungen_speichern():
+                        database.speichere_user_settings(
+                            layout.aktiver_user_id, 
+                            ansicht_select.value, 
+                            dark_switch.value,
+                            vorschlag_switch.value
+                        )
+                        if dark_switch.value:
+                            ui.dark_mode().enable()
                         else:
-                            ui.notify(t('error_user_exists'), type='negative')
-                    ui.button(icon='person_add', on_click=user_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
-                
-                ui.separator().classes('my-4 dark:bg-slate-700')
-                ui.label(t('existing_users')).classes(f'text-sm font-bold mb-2 {text_sub}')
-                
-                @ui.refreshable
-                def user_liste_refresh():
-                    user_liste = database.lade_alle_user()
-                    with ui.element('div').classes('flex flex-wrap gap-2'):
-                        for u_id, u_name in user_liste:
-                            with ui.element('div').classes(f'flex items-center rounded-full pl-3 pr-1 py-1 gap-2 shadow-sm {bg_pill}'):
-                                ui.label(u_name).classes('text-sm font-medium')
-                                if u_id == layout.aktiver_user_id:
-                                    ui.badge(t('active'), color='blue').classes('text-[10px]')
-                                else:
-                                    async def user_loeschen_klick(id_zu_loeschen=u_id, name_zu_loeschen=u_name):
+                            ui.dark_mode().disable()
+                        ui.notify(t('notify_saved'), type='positive', duration=1)
+                        await asyncio.sleep(0.2)
+                        ui.navigate.to('/settings')
+
+                    with ui.row().classes('w-full items-center justify-between gap-4 flex-wrap mb-4'):
+                        view_opts = {
+                            'PAGINATED': f"📄 {t('view_paginated')}", 
+                            'INFINITE': f"📜 {t('view_infinite')}"
+                        }
+                        ansicht_select = ui.select(
+                            options=view_opts, 
+                            value=current_settings['view_mode'],
+                            label=t('shelf_view_mode'),
+                            on_change=ui_einstellungen_speichern
+                        ).classes('w-64 px-1').props(f'outlined dense {select_prop}')
+                        
+                        dark_switch = ui.switch(
+                            t('activate_darkmode'), 
+                            value=current_settings['dark_mode'],
+                            on_change=ui_einstellungen_speichern
+                        ).classes(f'font-medium {text_main}')
+
+                    ui.separator().classes('my-3 dark:bg-slate-700')
+
+                    with ui.row().classes('w-full items-center justify-between gap-4 flex-wrap mt-2'):
+                        with ui.column().classes('gap-0 flex-1 pr-4'):
+                            ui.label(t('settings_suggestion_title')).classes('font-bold text-sm text-slate-800 dark:text-slate-100')
+                            ui.label(t('settings_suggestion_desc')).classes('text-xs text-slate-400 leading-tight mt-0.5')
+                        
+                        vorschlag_switch = ui.switch(
+                            value=current_settings.get('buch_vorschlag_aktiv', False),
+                            on_change=ui_einstellungen_speichern
+                        ).props('color="blue"')
+
+                # SEKTION 2: BENUTZERVERWALTUNG
+                with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
+                    ui.label(t('user_management')).classes(f'text-lg font-bold {text_main} mb-2')
+                    
+                    with ui.row().classes('w-full items-center gap-3 no-wrap mb-4'):
+                        neuer_user_input = ui.input(label=t('new_username')).classes('flex-1 px-1').props(f'outlined dense {dark_prop}')
+                        async def user_speichern():
+                            name = neuer_user_input.value.strip()
+                            if not name:
+                                ui.notify(t('error_empty_name'), type='warning')
+                                return
+                            
+                            if database.speichere_user_in_db(name):
+                                # Ersetzt das alte print()
+                                ui_log(f"[Booktracker] User erstellt: {name}")
+                                
+                                ui.notify(f'{t("user")} "{name}" {t("notify_user_added")}', type='positive')
+                                neuer_user_input.value = ''
+                                user_liste_refresh.refresh()
+                            else:
+                                ui_log(f"[Booktracker] WARNUNG: User-Erstellung fehlgeschlagen: {name}")
+                                ui.notify(t('error_user_exists'), type='negative')
+                        ui.button(icon='person_add', on_click=user_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
+                    
+                    ui.separator().classes('my-4 dark:bg-slate-700')
+                    ui.label(t('existing_users')).classes(f'text-sm font-bold mb-2 {text_sub}')
+                    
+                    @ui.refreshable
+                    def user_liste_refresh():
+                        user_liste = database.lade_alle_user()
+                        with ui.element('div').classes('flex flex-wrap gap-2'):
+                            for u_id, u_name in user_liste:
+                                with ui.element('div').classes(f'flex items-center rounded-full pl-3 pr-1 py-1 gap-2 shadow-sm {bg_pill}'):
+                                    ui.label(u_name).classes('text-sm font-medium')
+                                    if u_id == layout.aktiver_user_id:
+                                        ui.badge(t('active'), color='blue').classes('text-[10px]')
+                                    else:
+                                        async def user_loeschen_klick(id_zu_loeschen=u_id, name_zu_loeschen=u_name):
+                                            with ui.dialog() as dialog, ui.card().classes('p-4 w-full max-w-sm flex flex-col gap-4').style(style_modal):
+                                                ui.label(f'{t("confirm_delete_user_text")} "{name_zu_loeschen}"?').classes('text-sm mb-4')
+                                                with ui.row().classes('w-full justify-end gap-3'):
+                                                    ui.button(t('cancel'), on_click=dialog.close).classes('text-slate-500').props('flat')
+                                                    async def definitiv_loeschen():
+                                                        if database.loesche_user_aus_db(id_zu_loeschen):
+                                                            ui.notify(f'"{name_zu_loeschen}" {t("notify_user_deleted")}', type='info')
+                                                            user_liste_refresh.refresh()
+                                                        dialog.close()
+                                                    ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
+                                            dialog.open()
+                                        ui.button(icon='close', on_click=user_loeschen_klick).props('round dense flat size=sm').classes('text-red-500 hover:bg-red-900/30')
+                    user_liste_refresh()
+
+                # SEKTION 3: STANDORTVERWALTUNG
+                with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
+                    ui.label(t('manage_locations')).classes(f'text-lg font-bold {text_main} mb-2')
+                    
+                    with ui.row().classes('w-full items-center gap-3 no-wrap mb-4'):
+                        neues_regal_input = ui.input(label=t('location_name')).classes('flex-1 px-1').props(f'outlined dense {dark_prop}')
+                        async def regal_speichern():
+                            name = neues_regal_input.value.strip()
+                            if not name:
+                                ui.notify(t('error_empty_name'), type='warning')
+                                return
+                            if database.speichere_regal_in_db(name):
+                                ui.notify(f'"{name}" {t("notify_location_added")}', type='positive')
+                                neues_regal_input.value = ''
+                                regal_liste_refresh.refresh()
+                            else:
+                                ui.notify(t('error_location_exists'), type='negative')
+                        ui.button(icon='add', on_click=regal_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
+
+                    ui.separator().classes('my-4 dark:bg-slate-700')
+                    ui.label(t('existing_locations')).classes(f'text-sm font-bold mb-2 {text_sub}')
+                    
+                    @ui.refreshable
+                    def regal_liste_refresh():
+                        regale = database.lade_alle_regale()
+                        with ui.element('div').classes('flex flex-wrap gap-2'):
+                            for r_id, r_name in regale:
+                                with ui.element('div').classes(f'flex items-center rounded-full pl-3 pr-1 py-1 gap-2 shadow-sm {bg_pill}'):
+                                    ui.label(r_name).classes('text-sm font-medium')
+                                    async def regal_loeschen_klick(id_zu_loeschen=r_id, name_zu_loeschen=r_name):
                                         with ui.dialog() as dialog, ui.card().classes('p-4 w-full max-w-sm flex flex-col gap-4').style(style_modal):
-                                            ui.label(f'{t("confirm_delete_user_text")} "{name_zu_loeschen}"?').classes('text-sm mb-4')
-                                            with ui.row().classes('w-full justify-end gap-3'):
+                                            ui.label(f'"{name_zu_loeschen}" {t("confirm_delete_location_text")}').classes('text-sm mb-4')
+                                            with ui.row().classes('w-full justify-end gap-2'):
                                                 ui.button(t('cancel'), on_click=dialog.close).classes('text-slate-500').props('flat')
                                                 async def definitiv_loeschen():
-                                                    if database.loesche_user_aus_db(id_zu_loeschen):
-                                                        ui.notify(f'"{name_zu_loeschen}" {t("notify_user_deleted")}', type='info')
-                                                        user_liste_refresh.refresh()
+                                                    if database.loesche_regal_aus_db(id_zu_loeschen):
+                                                        ui.notify(f'"{name_zu_loeschen}" {t("notify_location_deleted")}', type='info')
+                                                        regal_liste_refresh.refresh()
                                                     dialog.close()
                                                 ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
                                         dialog.open()
-                                    ui.button(icon='close', on_click=user_loeschen_klick).props('round dense flat size=sm').classes('text-red-500 hover:bg-red-900/30')
-                user_liste_refresh()
+                                    ui.button(icon='close', on_click=regal_loeschen_klick).props('round dense flat size=sm').classes('text-red-500 hover:bg-red-900/30')
+                    regal_liste_refresh()
 
-            # ==========================================
-            # SEKTION 3: REGAL- / STANDORTVERWALTUNG
-            # ==========================================
-            with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
-                ui.label(t('manage_locations')).classes(f'text-lg font-bold {text_main} mb-2')
-                
-                with ui.row().classes('w-full items-center gap-3 no-wrap mb-4'):
-                    neues_regal_input = ui.input(label=t('location_name')).classes('flex-1 px-1').props(f'outlined dense {dark_prop}')
-                    async def regal_speichern():
-                        name = neues_regal_input.value.strip()
-                        if not name:
-                            ui.notify(t('error_empty_name'), type='warning')
-                            return
-                        if database.speichere_regal_in_db(name):
-                            ui.notify(f'"{name}" {t("notify_location_added")}', type='positive')
-                            neues_regal_input.value = ''
-                            regal_liste_refresh.refresh()
-                        else:
-                            ui.notify(t('error_location_exists'), type='negative')
-                    ui.button(icon='add', on_click=regal_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
-
-                ui.separator().classes('my-4 dark:bg-slate-700')
-                ui.label(t('existing_locations')).classes(f'text-sm font-bold mb-2 {text_sub}')
-                
-                @ui.refreshable
-                def regal_liste_refresh():
-                    regale = database.lade_alle_regale()
-                    with ui.element('div').classes('flex flex-wrap gap-2'):
-                        for r_id, r_name in regale:
-                            with ui.element('div').classes(f'flex items-center rounded-full pl-3 pr-1 py-1 gap-2 shadow-sm {bg_pill}'):
-                                ui.label(r_name).classes('text-sm font-medium')
-                                async def regal_loeschen_klick(id_zu_loeschen=r_id, name_zu_loeschen=r_name):
-                                    with ui.dialog() as dialog, ui.card().classes('p-4 w-full max-w-sm flex flex-col gap-4').style(style_modal):
-                                        ui.label(f'"{name_zu_loeschen}" {t("confirm_delete_location_text")}').classes('text-sm mb-4')
-                                        with ui.row().classes('w-full justify-end gap-2'):
-                                            ui.button(t('cancel'), on_click=dialog.close).classes('text-slate-500').props('flat')
-                                            async def definitiv_loeschen():
-                                                if database.loesche_regal_aus_db(id_zu_loeschen):
-                                                    ui.notify(f'"{name_zu_loeschen}" {t("notify_location_deleted")}', type='info')
-                                                    regal_liste_refresh.refresh()
-                                                dialog.close()
-                                            ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
-                                    dialog.open()
-                                ui.button(icon='close', on_click=regal_loeschen_klick).props('round dense flat size=sm').classes('text-red-500 hover:bg-red-900/30')
-                regal_liste_refresh()
-
-            # ==========================================
-            # SEKTION 3b: GENRE-VERWALTUNG
-            # ==========================================
-            with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
-                ui.label(t('manage_genres')).classes(f'text-lg font-bold {text_main} mb-2')
-                
-                # --- Eigenes Genre hinzufügen ---
-                with ui.row().classes('w-full items-center gap-3 no-wrap mb-4'):
-                    neues_genre_input = ui.input(label=t('genre_name')).classes('flex-1 px-1').props(f'outlined dense {dark_prop}')
-                    async def genre_speichern():
-                        name = neues_genre_input.value.strip()
-                        if not name:
-                            ui.notify(t('error_empty_name'), type='warning')
-                            return
-                        if database.speichere_genre_in_db(layout.aktiver_user_id, name):
-                            ui.notify(f'"{name}" {t("notify_genre_added")}', type='positive')
-                            neues_genre_input.value = ''
-                            genre_liste_refresh.refresh()
-                        else:
-                            ui.notify(t('error_genre_exists'), type='negative')
-                    ui.button(icon='add', on_click=genre_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
-
-                # --- NEU: INTEGRATION GENRE-IMPORT (Auswahl anderer Nutzer) ---
-                andere_user = database.lade_andere_user_mit_genres(layout.aktiver_user_id)
-                if andere_user:
-                    with ui.element('div').classes('w-full p-3 rounded border border-dashed border-slate-300 dark:border-slate-700 mb-4 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col gap-2'):
-                        ui.label(t('profile_copy:')).classes(f'text-xs font-bold uppercase tracking-wider {text_sub}')
-                        
-                        with ui.row().classes('w-full items-center gap-3 no-wrap'):
-                            user_opts = {u_id: u_name for u_id, u_name in andere_user}
-                            user_auswahl = ui.select(
-                                options=user_opts, 
-                                label=t('choose_user')
-                            ).classes('flex-1 max-w-xs px-1').props(f'outlined dense {dark_prop}')
-                            
-                            async def import_starten():
-                                if not user_auswahl.value:
-                                    ui.notify(t('choose_user_first'), type='warning')
-                                    return
-                                database.kopiere_genres_von_user(user_auswahl.value, layout.aktiver_user_id)
-                                ui.notify(t('genre_copy_successful'), type='positive')
-                                user_auswahl.value = None
-                                genre_liste_refresh.refresh()  # Aktualisiert sofort die Pill-Anzeige darunter!
-                            
-                            ui.button(icon='download', on_click=import_starten).classes('bg-blue-600 text-white p-2.5 rounded shadow-sm').tooltip(t('import_genre'))
-
-                ui.separator().classes('my-4 dark:bg-slate-700')
-                ui.label(t('existing_genres')).classes(f'text-sm font-bold mb-2 {text_sub}')
-                
-                # --- Bestehende Genres (Pills) ---
-                @ui.refreshable
-                def genre_liste_refresh():
-                    genres = database.lade_alle_genres(layout.aktiver_user_id)
-                    with ui.element('div').classes('flex flex-wrap gap-2'):
-                        if not genres:
-                            ui.label(t('no_genres_hint')).classes('text-xs italic text-slate-400')
-                        for g_id, g_name in genres:
-                            with ui.element('div').classes(f'flex items-center rounded-full pl-3 pr-1 py-1 gap-2 shadow-sm {bg_pill}'):
-                                ui.label(g_name).classes('text-sm font-medium')
-                                async def genre_loeschen_klick(id_zu_loeschen=g_id, name_zu_loeschen=g_name):
-                                    with ui.dialog() as dialog, ui.card().classes('p-4 w-full max-w-sm flex flex-col gap-4').style(style_modal):
-                                        ui.label(f'"{name_zu_loeschen}" {t("confirm_delete_genre_text")}').classes('text-sm mb-4')
-                                        with ui.row().classes('w-full justify-end gap-2'):
-                                            ui.button(t('cancel'), on_click=dialog.close).classes('text-slate-500').props('flat')
-                                            async def definitiv_loeschen():
-                                                if database.loesche_genre_aus_db(id_zu_loeschen):
-                                                    ui.notify(f'"{name_zu_loeschen}" {t("notify_genre_deleted")}', type='info')
-                                                    genre_liste_refresh.refresh()
-                                                dialog.close()
-                                            ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
-                                    dialog.open()
-                                ui.button(icon='close', on_click=genre_loeschen_klick).props('round dense flat size=sm').classes('text-red-500 hover:bg-red-900/30')
-                
-                genre_liste_refresh()
-
-            # ==========================================
-            # SEKTION 4: DATEI-IMPORT
-            # ==========================================
-            ui.label(t('settings_importexport_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide mt-4 -mb-2')
-
-            with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
-                with ui.element('div'):
-                    ui.label(t('import_file_title')).classes(f'text-lg font-bold {text_main}')
-                    ui.label(t('import_file_subtitle')).classes(f'text-xs {text_sub} mb-4')
-                
-                status_container = ui.element('div').classes('w-full flex flex-col gap-1')
-                
-                upload_field = ui.upload(auto_upload=True).props(
-                    f'accept=.csv,.txt label="{t("import_select_file")}" hide-upload-btn label-slot outlined dense {dark_prop}'
-                ).classes('w-full h-[40px]')
-                upload_field.on_upload(lambda e: handle_upload(e, status_container, upload_field, is_dark))
-
-            # ==========================================
-            # SEKTION 5: DATEI-EXPORT
-            # ==========================================
-            with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
-                with ui.element('div'):
-                    ui.label(t('export_file_title')).classes(f'text-lg font-bold {text_main}')
-                    ui.label(t('export_file_subtitle')).classes(f'text-xs {text_sub} mb-4')
-                
-                ui.button(t('export_btn_text'), icon='download', on_click=exportiere_buecher).classes('bg-slate-700 hover:bg-slate-600 text-white h-[40px] w-full shadow-sm rounded text-sm py-0')
-
-            # ==========================================
-            # SEKTION 6: DATENSICHERUNG & SYSTEM
-            # ==========================================
-            ui.label(t('settings_backup_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide mt-4 -mb-2')
-
-            with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
-                with ui.element('div'):
-                    ui.label(t('settings_backup_subtitle')).classes(f'text-md font-bold {text_main} mb-1')
-                    ui.label(t('settings_backup_desc')).classes(f'text-xs {text_sub} mb-4')
-                
-                with ui.row().classes('w-full items-stretch gap-3 no-wrap mt-2'):
-                    ui.button(
-                        t('settings_backup_download'), 
-                        icon='download', 
-                        on_click=lambda: backup_erstellen()
-                    ).classes('flex-1 bg-slate-700 hover:bg-slate-600 text-white rounded shadow-sm text-sm py-0')
+                # SEKTION 4: GENRE-VERWALTUNG
+                with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
+                    ui.label(t('manage_genres')).classes(f'text-lg font-bold {text_main} mb-2')
                     
-                    ui.upload(auto_upload=True, max_files=1).props(
-                        f'accept=.zip label="{t("settings_backup_restore")}" hide-upload-btn label-slot outlined dense {dark_prop}'
-                    ).classes('flex-1 h-[40px]') \
-                     .on_upload(lambda e: backup_einspielen(e))
+                    with ui.row().classes('w-full items-center gap-3 no-wrap mb-4'):
+                        neues_genre_input = ui.input(label=t('genre_name')).classes('flex-1 px-1').props(f'outlined dense {dark_prop}')
+                        async def genre_speichern():
+                            name = neues_genre_input.value.strip()
+                            if not name:
+                                ui.notify(t('error_empty_name'), type='warning')
+                                return
+                            if database.speichere_genre_in_db(layout.aktiver_user_id, name):
+                                ui.notify(f'"{name}" {t("notify_genre_added")}', type='positive')
+                                neues_genre_input.value = ''
+                                genre_liste_refresh.refresh()
+                            else:
+                                ui.notify(t('error_genre_exists'), type='negative')
+                        ui.button(icon='add', on_click=genre_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
 
-            # ==========================================
-            # SEKTION 7: GEFAHRENZONE (WERKSRESET)
-            # ==========================================
-            with ui.card().classes(f'w-full p-6 border border-red-300 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/10 min-h-[250px] flex flex-col justify-between shadow-sm'):
-                with ui.element('div'):
-                    ui.label(t('settings_reset_title')).classes('text-md font-bold text-red-700 dark:text-red-400 mb-1')
-                    ui.label(t('settings_reset_desc')).classes('text-xs text-red-900/80 dark:text-red-300/80 mb-4')
+                    andere_user = database.lade_andere_user_mit_genres(layout.aktiver_user_id)
+                    if andere_user:
+                        with ui.element('div').classes('w-full p-3 rounded border border-dashed border-slate-300 dark:border-slate-700 mb-4 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col gap-2'):
+                            ui.label(t('profile_copy:')).classes(f'text-xs font-bold uppercase tracking-wider {text_sub}')
+                            
+                            with ui.row().classes('w-full items-center gap-3 no-wrap'):
+                                user_opts = {u_id: u_name for u_id, u_name in andere_user}
+                                user_auswahl = ui.select(options=user_opts, label=t('choose_user')).classes('flex-1 max-w-xs px-1').props(f'outlined dense {dark_prop}')
+                                
+                                async def import_starten():
+                                    if not user_auswahl.value:
+                                        ui.notify(t('choose_user_first'), type='warning')
+                                        return
+                                    database.kopiere_genres_von_user(user_auswahl.value, layout.aktiver_user_id)
+                                    ui.notify(t('genre_copy_successful'), type='positive')
+                                    user_auswahl.value = None
+                                    genre_liste_refresh.refresh()
+                                
+                                ui.button(icon='download', on_click=import_starten).classes('bg-blue-600 text-white p-2.5 rounded shadow-sm').tooltip(t('import_genre'))
+
+                    ui.separator().classes('my-4 dark:bg-slate-700')
+                    ui.label(t('existing_genres')).classes(f'text-sm font-bold mb-2 {text_sub}')
+                    
+                    @ui.refreshable
+                    def genre_liste_refresh():
+                        genres = database.lade_alle_genres(layout.aktiver_user_id)
+                        with ui.element('div').classes('flex flex-wrap gap-2'):
+                            if not genres:
+                                ui.label(t('no_genres_hint')).classes('text-xs italic text-slate-400')
+                            for g_id, g_name in genres:
+                                with ui.element('div').classes(f'flex items-center rounded-full pl-3 pr-1 py-1 gap-2 shadow-sm {bg_pill}'):
+                                    ui.label(g_name).classes('text-sm font-medium')
+                                    async def genre_loeschen_klick(id_zu_loeschen=g_id, name_zu_loeschen=g_name):
+                                        with ui.dialog() as dialog, ui.card().classes('p-4 w-full max-w-sm flex flex-col gap-4').style(style_modal):
+                                            ui.label(f'"{name_zu_loeschen}" {t("confirm_delete_genre_text")}').classes('text-sm mb-4')
+                                            with ui.row().classes('w-full justify-end gap-2'):
+                                                ui.button(t('cancel'), on_click=dialog.close).classes('text-slate-500').props('flat')
+                                                async def definitiv_loeschen():
+                                                    if database.loesche_genre_aus_db(id_zu_loeschen):
+                                                        ui.notify(f'"{name_zu_loeschen}" {t("notify_genre_deleted")}', type='info')
+                                                        genre_liste_refresh.refresh()
+                                                    dialog.close()
+                                                ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
+                                        dialog.open()
+                                    ui.button(icon='close', on_click=genre_loeschen_klick).props('round dense flat size=sm').classes('text-red-500 hover:bg-red-900/30')
+                    genre_liste_refresh()
+
+            # ------------------------------------------
+            # REITER 2: DATENVERWALTUNG (IMPORT/EXPORT)
+            # ------------------------------------------
+            with ui.tab_panel(tab_daten).classes('p-0 gap-6 grid grid-cols-1 md:grid-cols-2 items-start'):
                 
-                with ui.dialog() as reset_dialog, ui.card().classes('p-6 w-full max-w-md flex flex-col gap-4').style(style_modal):
-                    ui.label(t('settings_reset_confirm_title')).classes('text-lg font-bold text-red-600 dark:text-red-400')
-                    ui.label(t('settings_reset_confirm_desc')).classes(f'text-sm {text_sub}')
-                    with ui.row().classes('w-full justify-end gap-3 mt-2'):
-                        ui.button(t('cancel'), on_click=reset_dialog.close).classes('text-slate-500').props('flat')
-                        ui.button(t('settings_reset_execute'), on_click=lambda: [reset_dialog.close(), werksreset_ausfuehren()]).classes('bg-red-600 text-white')
+                ui.label(t('settings_importexport_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide -mb-2')
 
-                ui.button(t('settings_reset_btn'), icon='delete_forever', on_click=reset_dialog.open).classes('bg-red-600 hover:bg-red-700 text-white h-[40px] w-full rounded shadow-sm text-sm py-0')
+                # DATEI-IMPORT
+                with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
+                    with ui.element('div'):
+                        ui.label(t('import_file_title')).classes(f'text-lg font-bold {text_main}')
+                        ui.label(t('import_file_subtitle')).classes(f'text-xs {text_sub} mb-4')
+                    
+                    status_container = ui.element('div').classes('w-full flex flex-col gap-1')
+                    
+                    upload_field = ui.upload(auto_upload=True).props(
+                        f'accept=.csv,.txt label="{t("import_select_file")}" hide-upload-btn label-slot outlined dense {dark_prop}'
+                    ).classes('w-full h-[40px]')
+                    upload_field.on_upload(lambda e: handle_upload(e, status_container, upload_field, is_dark))
 
-    # ==========================================
-    # FOOTER (VERSION & ENTWICKLER)
-    # ==========================================
-    with ui.element('div').classes('col-span-full w-full flex flex-col items-center justify-center gap-1 mt-12 mb-4 text-[11px] font-mono tracking-wide text-slate-400 dark:text-slate-500'):
-        ui.separator().classes('w-16 mb-2 opacity-50 dark:opacity-30')
-        with ui.row().classes('items-center gap-1.5'):
-            ui.icon('code', size='xs')
-            ui.label('Booktracker v0.6.4')
-        with ui.row().classes('items-center gap-1.5'):
-            ui.icon('copyright', size='xs')
-            ui.label('Developed by Shad-Rasi')
+                # DATEI-EXPORT
+                with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
+                    with ui.element('div'):
+                        ui.label(t('export_file_title')).classes(f'text-lg font-bold {text_main}')
+                        ui.label(t('export_file_subtitle')).classes(f'text-xs {text_sub} mb-4')
+                    
+                    ui.button(t('export_btn_text'), icon='download', on_click=exportiere_buecher).classes('bg-slate-700 hover:bg-slate-600 text-white h-[40px] w-full shadow-sm rounded text-sm py-0')
+
+                ui.label(t('settings_backup_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide mt-2 -mb-2')
+
+                # DATENSICHERUNG
+                with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
+                    with ui.element('div'):
+                        ui.label(t('settings_backup_subtitle')).classes(f'text-md font-bold {text_main} mb-1')
+                        ui.label(t('settings_backup_desc')).classes(f'text-xs {text_sub} mb-4')
+                    
+                    with ui.row().classes('w-full items-stretch gap-3 no-wrap mt-2'):
+                        ui.button(t('settings_backup_download'), icon='download', on_click=lambda: backup_erstellen()).classes('flex-1 bg-slate-700 hover:bg-slate-600 text-white rounded shadow-sm text-sm py-0')
+                        
+                        ui.upload(auto_upload=True, max_files=1).props(
+                            f'accept=.zip label="{t("settings_backup_restore")}" hide-upload-btn label-slot outlined dense {dark_prop}'
+                        ).classes('flex-1 h-[40px]').on_upload(lambda e: backup_einspielen(e))
+
+                # GEFAHRENZONE
+                with ui.card().classes(f'w-full p-6 border border-red-300 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/10 min-h-[250px] flex flex-col justify-between shadow-sm'):
+                    with ui.element('div'):
+                        ui.label(t('settings_reset_title')).classes('text-md font-bold text-red-700 dark:text-red-400 mb-1')
+                        ui.label(t('settings_reset_desc')).classes('text-xs text-red-900/80 dark:text-red-300/80 mb-4')
+                    
+                    with ui.dialog() as reset_dialog, ui.card().classes('p-6 w-full max-w-md flex flex-col gap-4').style(style_modal):
+                        ui.label(t('settings_reset_confirm_title')).classes('text-lg font-bold text-red-600 dark:text-red-400')
+                        ui.label(t('settings_reset_confirm_desc')).classes(f'text-sm {text_sub}')
+                        with ui.row().classes('w-full justify-end gap-3 mt-2'):
+                            ui.button(t('cancel'), on_click=reset_dialog.close).classes('text-slate-500').props('flat')
+                            ui.button(t('settings_reset_execute'), on_click=lambda: [reset_dialog.close(), werksreset_ausfuehren()]).classes('bg-red-600 text-white')
+
+                    ui.button(t('settings_reset_btn'), icon='delete_forever', on_click=reset_dialog.open).classes('bg-red-600 hover:bg-red-700 text-white h-[40px] w-full rounded shadow-sm text-sm py-0')
+
+            # ------------------------------------------
+            # REITER 3: NEU - LIVE CONTAINER LOGS
+            # ------------------------------------------
+            with ui.tab_panel(tab_logs).classes('p-0 gap-4 flex flex-col w-full'):
+                with ui.card().classes(f'w-full p-6 border shadow-sm {bg_card}'):
+                    ui.label(t('logs_live_title')).classes(f'text-lg font-bold {text_main} mb-1')
+                    ui.label(t('logs_live_subtitle')).classes(f'text-xs {text_sub} mb-4')
+                    
+                    with ui.scroll_area().classes('w-full h-96 p-4 bg-slate-950 dark:bg-black rounded-xl border border-slate-700/60 shadow-inner') as log_scroll:
+                        live_log_box = ui.label(t('logs_loading_hint')).classes('font-mono text-[11px] text-emerald-400 whitespace-pre leading-relaxed')
+                
+                # Wir hängen den asynchronen Stream an das UI-Element
+                ui.timer(0.5, lambda: asyncio.create_task(container_logs_streamen(live_log_box, log_scroll)), once=True)
+
+        # ==========================================
+        # FOOTER (VERSION & ENTWICKLER)
+        # ==========================================
+        with ui.element('div').classes('col-span-full w-full flex flex-col items-center justify-center gap-1 mt-12 mb-4 text-[11px] font-mono tracking-wide text-slate-400 dark:text-slate-500'):
+            ui.separator().classes('w-16 mb-2 opacity-50 dark:opacity-30')
+            with ui.row().classes('items-center gap-1.5'):
+                ui.icon('code', size='xs')
+                ui.label('Booktracker v0.7.0')
+            with ui.row().classes('items-center gap-1.5'):
+                ui.icon('copyright', size='xs')
+                ui.label('Developed by Shad-Rasi')

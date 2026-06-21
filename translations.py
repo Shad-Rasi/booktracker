@@ -295,6 +295,15 @@ TRANSLATIONS = {
         'choose_user_first': 'Bitte wähle zuerst einen Nutzer aus!',
         'genre_copy_successful': 'Genres erfolgreich kopiert! 🎉',
         'import_genre': 'Genres von diesem Nutzer importieren',
+        "settings_tab_general": "Allgemein",
+        "settings_tab_data": "Daten & Backup",
+        "settings_tab_logs": "Terminal / Logs",
+        "logs_live_title": "Live Container-Protokoll",
+        "logs_live_subtitle": "Hier siehst du die aktuellsten Systemmeldungen deines Booktrackers live.",
+        "logs_loading_hint": "Warte auf erste Log-Einträge...",
+        "settings_suggestion_title": "Lese-Vorschläge aktivieren",
+        "settings_suggestion_desc": "Zeigt dir beim Fertiglesen eines Buches automatisch einen neuen Vorschlag aus deinem Stapel ungelesener Bücher an.",
+        "logs_interface_initialized": "[System] Booktracker Log-Schnittstelle initialisiert...",
 
         # --- Import / Export ---
         'import_export_title': 'Daten Import / Export',
@@ -641,6 +650,15 @@ TRANSLATIONS = {
         'choose_user_first': 'Please select a user first!',
         'genre_copy_successful': 'Genres successfully copied! 🎉',
         'import_genre': 'Import genres from this user',
+        "settings_tab_general": "General",
+        "settings_tab_data": "Data & Backup",
+        "settings_tab_logs": "Terminal / Logs",
+        "logs_live_title": "Live Container Logs",
+        "logs_live_subtitle": "View the most recent system messages of your Booktracker live.",
+        "logs_loading_hint": "Waiting for log entries...",
+        "settings_suggestion_title": "Enable Book Suggestions",
+        "settings_suggestion_desc": "Automatically suggests a new book from your unread pile as soon as you finish reading a book.",
+        "logs_interface_initialized": "[System] Booktracker log interface initialized...",
 
         # --- Import / Export ---
         'import_export_title': 'Data Import / Export',
