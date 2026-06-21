@@ -1052,7 +1052,7 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
                         'title': rb_title, 
                         'is_series': True, 
                         'series_name': series_name,
-                        'genres': lade_genres_eines_buches(rb_id)
+                        'genres': lade_genres_eines_buches(rb_id, user_id)
                     }
                     
         # Wenn es keine Reihe ist, bleibt es beim gezogenen, ungelesenen Buch.
@@ -1061,5 +1061,5 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
             'title': b_title, 
             'is_series': False, 
             'series_name': None,
-            'genres': lade_genres_eines_buches(b_id)
+            'genres': lade_genres_eines_buches(b_id, user_id)
         }

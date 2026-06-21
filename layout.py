@@ -18,6 +18,66 @@ def global_vorschlag_modal_oeffnen():
         _letztes_vorschlag_modal.open()
 
 
+def vorschlag_modal_erstellen(current_user_id, is_dark, bg_modal_card, text_modal_main, select_modal_prop):
+    """Erstellt das Vorschlags-Modal separat, um Scope-Probleme zu vermeiden."""
+    global _letztes_vorschlag_modal
+
+    with ui.dialog().classes('w-full max-w-md') as vorschlag_modal, ui.card().classes(f'w-full p-6 gap-4 {bg_modal_card}'):
+        ui.label(t('book_suggestion_title')).classes(f'text-lg font-bold {text_modal_main} mb-1')
+        
+        globale_genres = database.lade_alle_genres(current_user_id)
+        genre_opts = {'ALL': '🎲 ' + t('book_suggestion_all')}
+        for g_id, g_name in globale_genres:
+            genre_opts[g_name] = f"🏷️ {g_name}"
+            
+        genre_auswahl = ui.select(options=genre_opts, value='ALL').classes('w-full').props(f'outlined dense {select_modal_prop}')
+        ergebnis_container = ui.column().classes('w-full items-center gap-2 mt-2')
+        
+        def vorschlag_generieren():
+            ergebnis_container.clear()
+            buch = database.hole_zufaelliges_buch_vorschlag(current_user_id, genre_auswahl.value)
+            
+            with ergebnis_container:
+                if not buch:
+                    ui.label(t('book_suggestion_empty')).classes('text-red-500 italic text-sm text-center')
+                    return
+                
+                ui.label(t('book_suggestion_hint')).classes('text-xs text-slate-400 uppercase tracking-wider mt-1 w-full text-left')
+                cover_url = database.hole_cover_url(buch['id'])
+                
+                bg_card_suggestion = 'bg-slate-900 border-slate-700' if is_dark else 'bg-blue-50/40 border-blue-100'
+                text_title = 'text-slate-100' if is_dark else 'text-slate-800'
+                
+                with ui.card().classes(f'w-full p-2 border flex flex-row gap-4 items-stretch cursor-pointer hover:scale-[1.01] transition-transform overflow-hidden rounded-xl {bg_card_suggestion}') \
+                        .on('click', lambda b_id=buch['id']: [vorschlag_modal.close(), ui.navigate.to(f'/book/{b_id}')]):
+                    
+                    with ui.element('div').classes('w-20 aspect-[2/3] rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center overflow-hidden shadow-xs flex-shrink-0'):
+                        if cover_url != "/covers/placeholder.jpg":
+                            ui.image(cover_url).classes('w-full h-full object-cover')
+                        else:
+                            ui.icon('book', size='sm').classes('text-slate-400')
+                    
+                    with ui.column().classes('flex-1 justify-between py-1 gap-1'):
+                        with ui.element('div').classes('w-full flex flex-col gap-1'):
+                            ui.label(buch['title']).classes(f'font-bold text-sm md:text-base leading-tight {text_title} line-clamp-2')
+                            if buch['is_series']:
+                                ui.badge(f"{t('series_num')}: {buch['series_name']}", color='orange').classes('text-[9px] px-1.5 py-0.5 rounded font-medium self-start mt-0.5')
+                        
+                        if buch.get('genres'):
+                            with ui.row().classes('flex-wrap gap-1 mt-auto pt-2'):
+                                for g_name in buch['genres']:
+                                    ui.badge(g_name, color='slate').classes('text-[9px] px-1.5 py-0.5 rounded-md font-normal opacity-80')
+                
+                ui.label(t('book_suggestion_click_to_open')).classes('text-[10px] text-slate-400 italic mt-1 w-full text-center')
+
+        with ui.row().classes('w-full justify-end gap-2 mt-4'):
+            ui.button(t('cancel'), on_click=vorschlag_modal.close).classes('text-slate-500').props('flat')
+            ui.button(t('roll_book'), on_click=vorschlag_generieren).classes('bg-blue-600 text-white px-4')
+
+    _letztes_vorschlag_modal = vorschlag_modal
+    return vorschlag_modal, ergebnis_container
+
+
 def quick_log_modal():
     """Öffnet ein globales Dialogfenster für den schnellen Lese-Eintrag – optimiert für Querformat."""
     current_user_id = sys.modules[__name__].aktiver_user_id
@@ -198,61 +258,10 @@ def basis_layout(titel_key: str = None):
             
             with ui.row().classes('items-center gap-4'):
                 if user_ui.get('buch_vorschlag_aktiv', False):
-                    with ui.dialog().classes('w-full max-w-md') as vorschlag_modal, ui.card().classes(f'w-full p-6 gap-4 {bg_modal_card}'):
-                        ui.label(t('book_suggestion_title')).classes(f'text-lg font-bold {text_modal_main} mb-1')
-                        
-                        globale_genres = database.lade_alle_genres(current_user_id)
-                        genre_opts = {'ALL': '🎲 ' + t('book_suggestion_all')}
-                        for g_id, g_name in globale_genres:
-                            genre_opts[g_name] = f"🏷️ {g_name}"
-                            
-                        genre_auswahl = ui.select(options=genre_opts, value='ALL').classes('w-full').props(f'outlined dense {select_modal_prop}')
-                        ergebnis_container = ui.column().classes('w-full items-center gap-2 mt-2')
-                        
-                        def vorschlag_generieren():
-                            ergebnis_container.clear()
-                            buch = database.hole_zufaelliges_buch_vorschlag(current_user_id, genre_auswahl.value)
-                            
-                            with ergebnis_container:
-                                if not buch:
-                                    ui.label(t('book_suggestion_empty')).classes('text-red-500 italic text-sm text-center')
-                                    return
-                                
-                                ui.label(t('book_suggestion_hint')).classes('text-xs text-slate-400 uppercase tracking-wider mt-1 w-full text-left')
-                                cover_url = database.hole_cover_url(buch['id'])
-                                
-                                bg_card_suggestion = 'bg-slate-900 border-slate-700' if is_dark else 'bg-blue-50/40 border-blue-100'
-                                text_title = 'text-slate-100' if is_dark else 'text-slate-800'
-                                
-                                with ui.card().classes(f'w-full p-2 border flex flex-row gap-4 items-stretch cursor-pointer hover:scale-[1.01] transition-transform overflow-hidden rounded-xl {bg_card_suggestion}') \
-                                        .on('click', lambda b_id=buch['id']: [vorschlag_modal.close(), ui.navigate.to(f'/book/{b_id}')]):
-                                    
-                                    with ui.element('div').classes('w-20 aspect-[2/3] rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center overflow-hidden shadow-xs flex-shrink-0'):
-                                        if cover_url != "/covers/placeholder.jpg":
-                                            ui.image(cover_url).classes('w-full h-full object-cover')
-                                        else:
-                                            ui.icon('book', size='sm').classes('text-slate-400')
-                                    
-                                    with ui.column().classes('flex-1 justify-between py-1 gap-1'):
-                                        with ui.element('div').classes('w-full flex flex-col gap-1'):
-                                            ui.label(buch['title']).classes(f'font-bold text-sm md:text-base leading-tight {text_title} line-clamp-2')
-                                            if buch['is_series']:
-                                                ui.badge(f"{t('series_num')}: {buch['series_name']}", color='orange').classes('text-[9px] px-1.5 py-0.5 rounded font-medium self-start mt-0.5')
-                                        
-                                        if buch.get('genres'):
-                                            with ui.row().classes('flex-wrap gap-1 mt-auto pt-2'):
-                                                for g_name in buch['genres']:
-                                                    ui.badge(g_name, color='slate').classes('text-[9px] px-1.5 py-0.5 rounded-md font-normal opacity-80')
-                                
-                                ui.label(t('book_suggestion_click_to_open')).classes('text-[10px] text-slate-400 italic mt-1 w-full text-center')
+                    # HIER DIE KORREKTUR: Ausgelagerte Funktion aufrufen
+                    v_modal, e_container = vorschlag_modal_erstellen(current_user_id, is_dark, bg_modal_card, text_modal_main, select_modal_prop)
 
-                        with ui.row().classes('w-full justify-end gap-2 mt-4'):
-                            ui.button(t('cancel'), on_click=vorschlag_modal.close).classes('text-slate-500').props('flat')
-                            ui.button(t('roll_book'), on_click=vorschlag_generieren).classes('bg-blue-600 text-white px-4')
-
-                    _letztes_vorschlag_modal = vorschlag_modal
-
-                    ui.button(icon='casino', on_click=lambda: [ergebnis_container.clear(), vorschlag_modal.open()]) \
+                    ui.button(icon='casino', on_click=lambda: [e_container.clear(), v_modal.open()]) \
                         .props('round flat dense size=md') \
                         .classes('text-blue-400 hover:bg-slate-700') \
                         .tooltip(t('roll_book'))

@@ -636,7 +636,7 @@ def einstellungen_seite():
         ui.separator().classes('w-16 mb-2 opacity-50 dark:opacity-30')
         with ui.row().classes('items-center gap-1.5'):
             ui.icon('code', size='xs')
-            ui.label('Booktracker v0.6.3')
+            ui.label('Booktracker v0.6.4')
         with ui.row().classes('items-center gap-1.5'):
             ui.icon('copyright', size='xs')
             ui.label('Developed by Shad-Rasi')
