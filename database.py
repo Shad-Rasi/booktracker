@@ -1013,14 +1013,14 @@ def hole_genre_verteilung_stats(user_id):
         
 def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
     """
-    Holt ein zufälliges Buch (OWNED oder BORROWED) des Benutzers, das noch NICHT gelesen wurde.
+    Holt ein zufälliges Buch (OWNED oder BORROWED) des Benutzers, das noch GAR NICHT gelesen wurde (UNREAD).
     Falls das gezogene Buch Teil einer Reihe ist, wird automatisch das ERSTE 
-    noch nicht gelesene Buch ('status' != 'READ') dieser Reihe zurückgegeben.
+    noch nicht gelesene Buch dieser Reihe zurückgegeben.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
         
-        # 1. BASIS-QUERY: Wir holen nur UNGELESENE/ANGELESENE Bücher
+        # 1. BASIS-QUERY: Wir holen NUR strikt UNGELESENE Bücher
         query = """
             SELECT b.id, b.title, b.is_series, b.series_name
             FROM books b
@@ -1028,21 +1028,20 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
         """
         params = [user_id]
         
-        # Falls ein spezifisches Genre gefiltert werden soll
         if genre_name and genre_name != 'ALL':
             query += """
                 JOIN book_genres bg ON b.id = bg.book_id
                 JOIN genres g ON bg.genre_id = g.id
                 WHERE ub.user_id = ? 
-                  AND ub.status != 'READ' -- NEU: Bereits gelesene direkt ausschließen!
-                  AND b.ownership IN ('OWNED', 'BORROWED') -- REPARIERT: b.ownership statt ub.ownership
+                  AND ub.status = 'UNREAD' -- KORRIGIERT: Nur noch komplett ungelesene!
+                  AND b.ownership IN ('OWNED', 'BORROWED')
                   AND g.name = ?
             """
             params.append(genre_name)
         else:
             query += """
                 WHERE ub.user_id = ? 
-                  AND ub.status != 'READ' -- NEU: Bereits gelesene direkt ausschließen!
+                  AND ub.status = 'UNREAD' -- KORRIGIERT: Nur noch komplett ungelesene!
                   AND b.ownership IN ('OWNED', 'BORROWED')
             """
             
@@ -1069,6 +1068,8 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
             
             for rb in reihen_buecher:
                 rb_id, rb_title, _, rb_status = rb
+                # Bei der Reihe lassen wir 'READING' als ungelesen durchgehen, 
+                # falls du Band 1 angefangen, aber Band 2 gelost hast.
                 if rb_status != 'READ':
                     return {
                         'id': rb_id, 
@@ -1078,7 +1079,6 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
                         'genres': lade_genres_eines_buches(rb_id, user_id)
                     }
                     
-        # Wenn es keine Reihe ist, bleibt es beim gezogenen, ungelesenen Buch.
         return {
             'id': b_id, 
             'title': b_title, 
@@ -1086,3 +1086,4 @@ def hole_zufaelliges_buch_vorschlag(user_id, genre_name=None):
             'series_name': None,
             'genres': lade_genres_eines_buches(b_id, user_id)
         }
+ 

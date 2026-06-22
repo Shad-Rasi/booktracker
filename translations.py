@@ -261,6 +261,7 @@ TRANSLATIONS = {
         'month_09': 'September', 'month_10': 'Oktober', 'month_11': 'November', 'month_12': 'Dezember',
         'stats_chart_genres': 'Verteilung der Genre',
         'stats_no_data_year': 'Du hast dieses Jahr noch kein Buch beendet.',
+        'stats_no_data': 'Keine Statistiken vorhanden.',
 
         # --- Sektion: Regale & Standorte ---
         'manage_locations': 'Regale & Standorte verwalten',
@@ -668,6 +669,7 @@ TRANSLATIONS = {
         'month_09': 'September', 'month_10': 'October', 'month_11': 'November', 'month_12': 'December',
         'stats_chart_genres': 'Genre overview',
         'stats_no_data_year': 'You did not finish a book this year.',
+        'stats_no_data': 'No statistics available.',
 
         # --- Section: Shelves & Locations ---
         'manage_locations': 'Manage Shelves & Locations',
