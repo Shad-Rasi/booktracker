@@ -8,6 +8,7 @@ from layout import basis_layout
 import translations
 from translations import t
 import book_api
+from logger import ui_log_lang
 
 @ui.page('/authors')
 def autoren_uebersicht():
@@ -152,9 +153,11 @@ def autor_detailseite(author_id: int):
                                             api_data['death_date'], api_data['image_url']
                                         )
                                         ui.notify('Autorendaten erfolgreich aktualisiert! 🎉', type='positive')
+                                        ui_log_lang('log_author_data_saved', author=b_author)
                                         profil_kopf_refresh.refresh()
                                     else:
                                         ui.notify('Keine Daten auf isbn.de oder Open Library gefunden.', type='warning')
+                                        ui_log_lang('log_author_data_save_error', author=b_author)
 
                                 ui.button(icon='auto_fix_high', on_click=api_abruf_starten) \
                                     .props('round flat dense').classes('text-blue-500 dark:text-blue-400')
@@ -177,6 +180,7 @@ def autor_detailseite(author_id: int):
                                                 img_input.value.strip() if img_input.value else None
                                             )
                                             ui.notify(t('notify_author_updated'), type='positive')
+                                            ui_log_lang('log_author_data_updated', author=b_author)
                                             edit_dialog.close()
                                             profil_kopf_refresh.refresh()
 

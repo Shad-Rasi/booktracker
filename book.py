@@ -6,6 +6,7 @@ from translations import t
 from datetime import datetime
 import asyncio
 import book_api
+from logger import ui_log_lang
 
 @ui.page('/book/{b_id}')
 def detailseite(b_id: int):
@@ -98,10 +99,6 @@ def detailseite(b_id: int):
         database.speichere_buch_in_db(book_id, layout.aktiver_user_id, aktuelle_book_data, aktuelle_user_data)
         ui.notify(t('notify_saved'), type='positive', duration=1)
         
-        # WICHTIGER FIX: 
-        # Wir rufen NUR noch den großen Haupt-Refresh auf.
-        # Da dieser die gesamte Seite neu zeichnet, aktualisieren sich die Infokarte, 
-        # die Tracking-Zone und das Logbuch vollautomatisch fehler- und warnungsfrei mit!
         if 'seite_neu_laden' in refresh_registry: 
             refresh_registry['seite_neu_laden']()
         
@@ -125,10 +122,12 @@ def detailseite(b_id: int):
                 erfolg = await asyncio.to_thread(database.lade_und_speichere_cover, book_id, url)
                 if erfolg:
                     ui.notify(t('book_notify_cover_updated'), type='positive')
+                    ui_log_lang('log_cover_updated', title=title)
                     await asyncio.sleep(0.2)
                     ui.navigate.to(f'/book/{book_id}')
                 else:
                     ui.notify(t('book_notify_cover_error'), type='negative')
+                    ui_log_lang('log_cover_updated_error', title=title)
 
             async def suche_ausfuehren():
                 with galerie_container: ui.spinner(size='lg').classes('mx-auto my-8 block')
@@ -165,10 +164,12 @@ def detailseite(b_id: int):
             try:
                 await e.file.save(ziel)
                 ui.notify(t('book_notify_cover_updated'), type='positive')
+                ui_log_lang('log_cover_updated', title=title)
                 dialog.close()
                 ui.navigate.to(f'/book/{book_id}')
             except Exception as ex:
                 ui.notify(f"{t('book_notify_save_error')}: {str(ex)}", type='negative')
+                ui_log_lang('log_cover_updated_error', title=title)
 
         # =========================================================================
         # THE FINAL MASTER ZONE: Grid mit CSS-Bündigkeit & perfekter Mobile-Abfolge
@@ -189,14 +190,22 @@ def detailseite(b_id: int):
                             if isbn_13 and (not description or not publisher or pages <= 1 or not s_name):
                                 async def metadaten_blitz_update():
                                     ui.notify(t('book_notify_scrape_metadata'), type='info')
-                                    scraped_data = await book_api.scrape_buch_details_isbn_de_async(isbn_13)
+                                    # 1. User-ID direkt aus dem Layout-Modul ziehen (Absolut sicher!)
+                                    aktive_id = layout.aktiver_user_id
+                                    # 2. Wunsch-Reihenfolge aus der DB laden
+                                    user_settings = database.lade_user_settings(aktive_id)
+                                    provider_reihenfolge = user_settings.get('api_priority', 'isbn_de,google_books').split(',')
+                                    # 3. Kaskadierenden Router füttern
+                                    scraped_data = await book_api.hole_buch_details_kaskadierend(isbn_13, provider_reihenfolge)
                                     if scraped_data:
                                         database.aktualisiere_buch_metadaten(book_id, scraped_data)
                                         ui.notify(t('book_notify_metadata_saved'), type='positive')
+                                        ui_log_lang('log_metadata_updated', title=title)
                                         await asyncio.sleep(0.5)
                                         ui.navigate.to(f'/book/{book_id}') 
                                     else:
                                         ui.notify(t('book_notify_metadata_not_found'), type='warning')
+                                        ui_log_lang('log_metadata_update_error', title=title)
 
                                 ui.button(icon='auto_fix_high', on_click=lambda: metadaten_blitz_update()) \
                                     .props('flat round dense').classes('text-emerald-600 dark:text-emerald-400') \
@@ -219,6 +228,7 @@ def detailseite(b_id: int):
                                             confirm_delete_dial.close()
                                             database.loesche_buch_aus_db(book_id)
                                             ui.notify(f'"{title}" {t("notify_deleted")}', type='positive')
+                                            ui_log_lang('log_book_deleted', title=title)
                                             ui.navigate.to('/')
                                         ui.button(t('delete'), on_click=definitiv_aus_db_werfen).classes('bg-red-500 text-white px-4')
                                 confirm_delete_dial.open()
@@ -368,6 +378,7 @@ def detailseite(b_id: int):
                                         erfolg, meldung = database.trage_lese_log_ein(layout.aktiver_user_id, book_id, neuer_stand)
                                         if erfolg:
                                             ui.notify(f"{t('book_notify_log_saved')} +{meldung} {t('pages_short')}.", type='positive')
+                                            ui_log_lang('log_progress_saved', pages=meldung, title=title)
                                             if neuer_stand >= gesamt_seiten:
                                                 database.schliesse_aktiven_zyklus_ab(layout.aktiver_user_id, book_id)
                                                 inline_speichern(neuer_status='READ')
@@ -390,6 +401,7 @@ def detailseite(b_id: int):
                                                 async def log_loeschen(d=l_date, cid=c_id, page=p_page):
                                                     if database.loesche_reading_log_aus_db(d, cid, page):
                                                         ui.notify(t('book_notify_log_removed'), type='info')
+                                                        ui_log_lang('log_book_log_removed', title=title)
                                                         tracking_zone_refresh.refresh()
                                                         if 'globales_logbuch' in refresh_registry: refresh_registry['globales_logbuch']()
                                                 ui.button(icon='close', on_click=log_loeschen).props('flat round dense size=sm').classes('text-red-400 hover:text-red-600 shrink-0')
@@ -435,6 +447,7 @@ def detailseite(b_id: int):
                                                                 confirm_dial.close()
                                                                 if database.loesche_reading_cycle_aus_db(target_id):
                                                                     ui.notify(t('book_notify_cycle_removed'), type='info')
+                                                                    ui_log_lang('log_book_cycle_removed', title=title, cycle=cyc_id)
                                                                     tracking_zone_refresh.refresh()
                                                                     if 'globales_logbuch' in refresh_registry: refresh_registry['globales_logbuch']()
                                                             ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')

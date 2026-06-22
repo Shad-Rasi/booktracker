@@ -11,6 +11,7 @@ import pdf_export_service
 from layout import basis_layout
 import translations
 from translations import t
+from logger import ui_log_lang
 
 def berechne_grund_statistiken(user_id):
     """Berechnet globale Bestandsdaten der kompletten Bibliothek."""
@@ -188,6 +189,7 @@ def statistik_seite():
                     ui.download(pdf_pfad)
                 except Exception as e:
                     ui.notify(f"{t('share_report_error')}: {str(e)}", type='negative')
+                    ui_log_lang('log_error_creating_pdf', error=str(e))
 
             # =========================================================================
             # SEKTION 1: PERSÖNLICHE STATISTIKEN

@@ -123,6 +123,7 @@ def init_db():
             view_mode TEXT DEFAULT 'PAGINATED',
             dark_mode BOOLEAN DEFAULT 0,
             buch_vorschlag_aktiv BOOLEAN DEFAULT 0,
+            api_priority TEXT DEFAULT 'isbn_de,google_books',
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         """)
@@ -167,6 +168,13 @@ def init_db():
             cursor.execute("INSERT INTO locations (name) VALUES (?)", ("Arbeitszimmer",))
             
         conn.commit()
+
+        # Automatische Migration für bestehende Datenbanken
+        try:
+            cursor.execute("ALTER TABLE user_settings ADD COLUMN api_priority TEXT DEFAULT 'isbn_de,google_books';")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
 def get_user_id_by_name(username):
     """Holt die ID des ausgewählten Benutzers aus der Datenbank."""
@@ -818,34 +826,49 @@ def lade_user_settings(user_id):
                     user_id = erster_user[0]
                 else:
                     # Totale Absicherung: Wenn die DB komplett leer ist, geben wir Standard-Dummy-Settings zurück
-                    return {'dark_mode': False, 'view_mode': 'PAGINATED', 'buch_vorschlag_aktiv': False}
+                    return {
+                        'dark_mode': False, 
+                        'view_mode': 'PAGINATED', 
+                        'buch_vorschlag_aktiv': False,
+                        'api_priority': 'isbn_de,google_books'  # Fallback
+                    }
 
             # Jetzt erst führen wir das Insert aus – absolut Foreign-Key-sicher!
+            # Hinweis: api_priority nutzt hier den in der Tabelle definierten DEFAULT-Wert
             cursor.execute("INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,))
             conn.commit()
             
-            # Die eigentlichen Settings auslesen (Erweitert um buch_vorschlag_aktiv)
-            cursor.execute("SELECT dark_mode, view_mode, buch_vorschlag_aktiv FROM user_settings WHERE user_id = ?", (user_id,))
+            # Die eigentlichen Settings auslesen (Erweitert um api_priority)
+            cursor.execute("""
+                SELECT dark_mode, view_mode, buch_vorschlag_aktiv, api_priority 
+                FROM user_settings WHERE user_id = ?
+            """, (user_id,))
             row = cursor.fetchone()
             
             # Mapping für die Rückgabe
             return {
                 'dark_mode': bool(row[0]) if row else False,
                 'view_mode': row[1] if row and row[1] else 'PAGINATED',
-                'buch_vorschlag_aktiv': bool(row[2]) if row and row[2] else False  # NEU
+                'buch_vorschlag_aktiv': bool(row[2]) if row and row[2] else False,
+                'api_priority': row[3] if row and row[3] else 'isbn_de,google_books'  # NEU
             }
     except Exception as e:
         print(f"Fehler in lade_user_settings für User {user_id}: {str(e)}")
-        return {'dark_mode': False, 'view_mode': 'PAGINATED', 'buch_vorschlag_aktiv': False}
+        return {
+            'dark_mode': False, 
+            'view_mode': 'PAGINATED', 
+            'buch_vorschlag_aktiv': False,
+            'api_priority': 'isbn_de,google_books'
+        }
 
-def speichere_user_settings(user_id, view_mode, dark_mode, vorschlag_aktiv):
-    """Speichert die UI-Einstellungen und den Spaßprojekt-Status dauerhaft ab."""
+def speichere_user_settings(user_id, view_mode, dark_mode, vorschlag_aktiv, api_priority='isbn_de,google_books'):
+    """Speichert die UI-Einstellungen, den Spaßprojekt-Status und die API-Priorität dauerhaft ab."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT OR REPLACE INTO user_settings (user_id, view_mode, dark_mode, buch_vorschlag_aktiv)
-            VALUES (?, ?, ?, ?)
-        """, (user_id, view_mode, int(dark_mode), int(vorschlag_aktiv)))
+            INSERT OR REPLACE INTO user_settings (user_id, view_mode, dark_mode, buch_vorschlag_aktiv, api_priority)
+            VALUES (?, ?, ?, ?, ?)
+        """, (user_id, view_mode, int(dark_mode), int(vorschlag_aktiv), api_priority))
         conn.commit()
 
 def datenbank_strukturen_leeren():

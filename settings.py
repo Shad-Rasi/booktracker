@@ -12,19 +12,7 @@ import book_api
 import translations
 from layout import basis_layout
 from translations import t
-from datetime import datetime
-
-# Globaler Puffer für die Live-Log-Anzeige im UI
-UI_LOG_BUFFER = [t('logs_interface_initialized')]
-
-def ui_log(nachricht: str):
-    """Schreibt eine Zeile in das Docker-Terminal UND in den UI-Puffer."""
-    print(nachricht, flush=True) # Für Docker Desktop / VPS Terminal
-    zeit = datetime.now().strftime('%X')
-    UI_LOG_BUFFER.append(f"[{zeit}] {nachricht}")
-    # Puffer auf die letzten 100 Zeilen begrenzen, um RAM zu sparen
-    if len(UI_LOG_BUFFER) > 100:
-        UI_LOG_BUFFER.pop(0)
+from logger import ui_log_lang, UI_LOG_BUFFER
 
 # Helper-Funktionen (bleiben funktional exakt gleich)
 def status_uebersetzen(goodreads_shelf):
@@ -91,39 +79,38 @@ async def import_queue_verarbeiten(buecher_liste, fortschritt_label, fortschritt
         cover_url_to_download = None
         quelle = t('import_source_local')
 
+        # NACHHER: Die neue kaskadierende Suche nutzen
         if isbn:
             try:
-                scraped_daten = await book_api.scrape_buch_details_isbn_de_async(isbn)
+                # 1. Bevorzugte API-Reihenfolge aus den User-Settings laden
+                user_settings = database.lade_user_settings(layout.aktiver_user_id)
+                # Falls noch nichts gespeichert ist, nehmen wir deine Standard-Reihenfolge
+                api_order_str = user_settings.get('api_priority', 'isbn_de,google_books')
+                provider_reihenfolge = api_order_str.split(',')
+
+                # 2. Den kaskadierenden Master-Router aufrufen
+                scraped_daten = await book_api.hole_buch_details_kaskadierend(isbn, provider_reihenfolge)
+
                 if scraped_daten:
-                    if (book_data['title'].startswith("ISBN:") or not book_data['title']) and scraped_daten.get('title'):
-                        book_data['title'] = scraped_daten['title']
-                    if (book_data['author'] == t('unknown_author') or not book_data['author']) and scraped_daten.get('author'):
-                        book_data['author'] = scraped_daten['author']
+                    if scraped_daten.get('title'): book_data['title'] = scraped_daten['title']
+                    if scraped_daten.get('author'): book_data['author'] = scraped_daten['author']
                     if scraped_daten.get('description'): book_data['description'] = scraped_daten['description']
                     if scraped_daten.get('publisher'): book_data['publisher'] = scraped_daten['publisher']
                     if scraped_daten.get('published_date'): book_data['published_date'] = scraped_daten['published_date']
                     if scraped_daten.get('pages') and scraped_daten['pages'] > 1: book_data['pages'] = scraped_daten['pages']
-                    if scraped_daten.get('series_name'):
+                    
+                    # Reihen-Logik (wird von isbn_de geliefert, von google_books ignoriert)
+                    if scraped_daten.get('is_series'):
                         book_data['is_series'] = True
                         book_data['series_name'] = scraped_daten['series_name']
-                        book_data['series_number'] = int(scraped_daten.get('series_number', 0))
-                    cover_url_to_download = f"https://buch.isbn.de/gross/{isbn}.jpg" if len(isbn) == 13 else None
-                    quelle = "isbn.de"
-
-                if not book_data['title'] or book_data['title'].startswith("ISBN:"):
-                    google_daten = await book_api.isbn_suche_async(isbn)
-                    if google_daten:
-                        book_data['title'] = google_daten.get('title') or book_data['title']
-                        if book_data['author'] == t('unknown_author') or not book_data['author']:
-                            book_data['author'] = google_daten.get('author') or book_data['author']
-                        if not book_data['description']: book_data['description'] = google_daten.get('description', '')
-                        if not book_data['publisher']: book_data['publisher'] = google_daten.get('publisher', '')
-                        if not book_data['pages']: book_data['pages'] = int(google_daten.get('pages', 0))
-                        if not book_data['published_date']: book_data['published_date'] = google_daten.get('published_date', '')
-                        if not cover_url_to_download: cover_url_to_download = google_daten.get('cover_url')
-                        quelle = "Google Books (Fallback)"
+                        book_data['series_number'] = scraped_daten['series_number']
+                        
+                    cover_url_to_download = scraped_daten.get('cover_url')
+                    quelle = scraped_daten.get('quelle', 'Unbekannt')
+                    
+                    ui_log_lang(t('logs_import_success').format(quelle=quelle, title=book_data['title']))
             except Exception as api_err:
-                print(f"Fehler beim Import für ISBN {isbn}: {str(api_err)}")
+                ui_log_lang(t('logs_import_error').format(isbn=isbn, error=str(api_err)))
 
         try:
             neue_id = database.speichere_buch_in_db(None, layout.aktiver_user_id, book_data, user_data)
@@ -194,6 +181,7 @@ async def handle_upload(e, status_container, upload_element, is_dark):
         asyncio.create_task(queue_trigger())
     except Exception as ex:
         ui.notify(f"{t('import_error_read')}: {str(ex)}", type='negative')
+        ui_log_lang('log_upload_no_data', error=str(ex))
 
 
 def exportiere_buecher():
@@ -254,8 +242,10 @@ def exportiere_buecher():
         output.close()
         ui.download(csv_bytes, filename="goodreads_library_export.csv")
         ui.notify(t('export_success'), type='positive')
+        ui_log_lang('log_export_data_successful')
     except Exception as ex:
         ui.notify(f"{t('export_failed')}: {str(ex)}", type='negative')
+        ui_log_lang('log_export_data_error', error=str(ex))
 
 def backup_erstellen():
     try:
@@ -281,8 +271,10 @@ def backup_erstellen():
         zip_buffer.seek(0)
         ui.download(zip_buffer.getvalue(), filename="buecherregal_backup.zip")
         ui.notify("Backup erfolgreich erstellt und heruntergeladen!", type='positive')
+        ui_log_lang('log_creating_backup_data_successful')
     except Exception as e:
         ui.notify(f"Fehler beim Backup erstellen: {str(e)}", type='negative')
+        ui_log_lang('log_creating_backup_data_error', error=str(e))
 
 async def backup_einspielen(e):
     try:
@@ -298,6 +290,7 @@ async def backup_einspielen(e):
             dateien_im_zip = zip_file.namelist()
             if not any(f.endswith('.db') for f in dateien_im_zip):
                 ui.notify("Ungültiges Backup: Keine Datenbank-Datei (.db) im ZIP gefunden!", type='negative')
+                ui_log_lang('log_wrong_backup_data')
                 return
             for ordner in ['covers', 'authors']:
                 pfad = os.path.join(data_dir, ordner)
@@ -314,8 +307,10 @@ async def backup_einspielen(e):
                         os.makedirs(os.path.dirname(target_path), exist_ok=True)
                         with open(target_path, 'wb') as f: f.write(zip_file.read(member.filename))
         ui.notify("🎉 Backup erfolgreich eingespielt! Bitte lade die Seite neu.", type='positive', duration=5)
+        ui_log_lang('log_import_backup_data_successful')
     except Exception as ex:
         ui.notify(f"Fehler beim Einspielen des Backups: {str(ex)}", type='negative')
+        ui_log_lang('log_import_backup_data_error', error=str(ex))
 
 def werksreset_ausfuehren():
     try:
@@ -331,20 +326,21 @@ def werksreset_ausfuehren():
         if hasattr(database, 'init_db'): database.init_db()
         elif hasattr(database, 'create_tables'): database.create_tables()
         ui.notify("💥 Werksreset erfolgreich! Alle Daten wurden gelöscht.", type='warning', duration=5)
+        ui_log_lang('log_reset_success')
     except Exception as e:
         ui.notify(f"Fehler beim Werksreset: {str(e)}", type='negative')
+        ui_log_lang('log_reset_error', error=str(e))
 
 
 # ==========================================
 # REPARIERT: BLOCKIERUNGSFREIES LOG-STREAMEN
 # ==========================================
 async def container_logs_streamen(log_label, scroll_element):
-    """Liest fortlaufend den internen Log-Puffer aus, ohne das System zu blockieren."""
+    from logger import UI_LOG_BUFFER
     while True:
-        # Den aktuellen Puffer rückwärts oder vorwärts zusammenfügen
         log_label.text = "\n".join(UI_LOG_BUFFER)
         scroll_element.scroll_to(percent=100, duration=0.2)
-        await asyncio.sleep(1.0) # Aktualisierung jede Sekunde
+        await asyncio.sleep(1.0)
 
 
 @ui.page('/settings')
@@ -432,6 +428,64 @@ def einstellungen_seite():
                             on_change=ui_einstellungen_speichern
                         ).props('color="blue"')
 
+                # ==========================================
+                # SEKTION 1b: BUCH-QUELLEN (PROVIDER)
+                # ==========================================
+                with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
+                    ui.label(t('metadata_sources_title')).classes(f'text-lg font-bold {text_main} mb-1')
+                    ui.label(t('metadata_sources_subtitle')).classes(f'text-xs {text_sub} mb-4 leading-tight')
+
+                    # 1. Wir laden die Priorität direkt aus den echten User-Settings
+                    current_settings = database.lade_user_settings(layout.aktiver_user_id)
+                    aktueller_pool = current_settings.get('api_priority', 'isbn_de,google_books').split(',')
+
+                    @ui.refreshable
+                    def provider_liste_render():
+                        with ui.column().classes('w-full gap-2'):
+                            for index, p_key in enumerate(aktueller_pool):
+                                # Sub-Card Styling passend zu den Pills der anderen Sektionen
+                                with ui.card().classes(f'w-full p-3 flex flex-row items-center justify-between bg-slate-900/10 dark:bg-slate-900/40 shadow-none border border-slate-200 dark:border-slate-700/50 rounded-xl'):
+                                    with ui.row().classes('items-center gap-3'):
+                                        ui.icon('cloud' if p_key == 'google_books' else 'language', size='sm').classes('text-blue-500 dark:text-blue-400')
+                                        ui.label(t(f'provider_{p_key}')).classes(f'text-sm font-semibold {text_main}') 
+                                    
+                                    with ui.row().classes('items-center gap-1'):
+                                        # Nach oben schieben
+                                        ui.button(icon='arrow_upward', on_click=lambda idx=index: provider_verschieben(idx, -1)) \
+                                            .props('flat round dense size=sm').classes('text-slate-400 hover:bg-slate-500/10') \
+                                            .set_visibility(index > 0)
+                                        
+                                        # Nach unten schieben
+                                        ui.button(icon='arrow_downward', on_click=lambda idx=index: provider_verschieben(idx, 1)) \
+                                            .props('flat round dense size=sm').classes('text-slate-400 hover:bg-slate-500/10') \
+                                            .set_visibility(index < len(aktueller_pool) - 1)
+
+                    def provider_verschieben(index, richtung):
+                        ziel = index + richtung
+                        
+                        # Plätze im Array tauschen
+                        aktueller_pool[index], aktueller_pool[ziel] = aktueller_pool[ziel], aktueller_pool[index]
+                        api_order_str = ",".join(aktueller_pool)
+                        
+                        # Aktuelle UI-Einstellungen frisch laden
+                        latest_settings = database.lade_user_settings(layout.aktiver_user_id)
+                        
+                        # In der DB abspeichern
+                        database.speichere_user_settings(
+                            layout.aktiver_user_id,
+                            latest_settings['view_mode'],
+                            latest_settings['dark_mode'],
+                            latest_settings['buch_vorschlag_aktiv'],
+                            api_order_str
+                        )
+                        
+                        # In dein neues Live-Terminal loggen!
+                        ui_log_lang(f"[Settings] API-Reihenfolge geändert: {api_order_str}")
+                        provider_liste_render.refresh()
+
+                    # Initiales Rendern der Liste triggern
+                    provider_liste_render()
+
                 # SEKTION 2: BENUTZERVERWALTUNG
                 with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[300px] {bg_card}'):
                     ui.label(t('user_management')).classes(f'text-lg font-bold {text_main} mb-2')
@@ -445,15 +499,14 @@ def einstellungen_seite():
                                 return
                             
                             if database.speichere_user_in_db(name):
-                                # Ersetzt das alte print()
-                                ui_log(f"[Booktracker] User erstellt: {name}")
-                                
                                 ui.notify(f'{t("user")} "{name}" {t("notify_user_added")}', type='positive')
+                                ui_log_lang('log_create_user_success', name=name)
+                                
                                 neuer_user_input.value = ''
                                 user_liste_refresh.refresh()
                             else:
-                                ui_log(f"[Booktracker] WARNUNG: User-Erstellung fehlgeschlagen: {name}")
                                 ui.notify(t('error_user_exists'), type='negative')
+                                ui_log_lang('log_create_user_error', name=name)
                         ui.button(icon='person_add', on_click=user_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
                     
                     ui.separator().classes('my-4 dark:bg-slate-700')
@@ -477,6 +530,7 @@ def einstellungen_seite():
                                                     async def definitiv_loeschen():
                                                         if database.loesche_user_aus_db(id_zu_loeschen):
                                                             ui.notify(f'"{name_zu_loeschen}" {t("notify_user_deleted")}', type='info')
+                                                            ui_log_lang('log_delete_user_success', name=name_zu_loeschen)
                                                             user_liste_refresh.refresh()
                                                         dialog.close()
                                                     ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
@@ -497,10 +551,12 @@ def einstellungen_seite():
                                 return
                             if database.speichere_regal_in_db(name):
                                 ui.notify(f'"{name}" {t("notify_location_added")}', type='positive')
+                                ui_log_lang('log_create_shelf_success', name=name)
                                 neues_regal_input.value = ''
                                 regal_liste_refresh.refresh()
                             else:
                                 ui.notify(t('error_location_exists'), type='negative')
+                                ui_log_lang('log_create_shelf_error', name=name)
                         ui.button(icon='add', on_click=regal_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
 
                     ui.separator().classes('my-4 dark:bg-slate-700')
@@ -521,6 +577,7 @@ def einstellungen_seite():
                                                 async def definitiv_loeschen():
                                                     if database.loesche_regal_aus_db(id_zu_loeschen):
                                                         ui.notify(f'"{name_zu_loeschen}" {t("notify_location_deleted")}', type='info')
+                                                        ui_log_lang('log_delete_shelf_success', name=name_zu_loeschen)
                                                         regal_liste_refresh.refresh()
                                                     dialog.close()
                                                 ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')
@@ -541,10 +598,12 @@ def einstellungen_seite():
                                 return
                             if database.speichere_genre_in_db(layout.aktiver_user_id, name):
                                 ui.notify(f'"{name}" {t("notify_genre_added")}', type='positive')
+                                ui_log_lang('log_create_genre_success', name=name)
                                 neues_genre_input.value = ''
                                 genre_liste_refresh.refresh()
                             else:
                                 ui.notify(t('error_genre_exists'), type='negative')
+                                ui_log_lang('log_create_genre_error', name=name)
                         ui.button(icon='add', on_click=genre_speichern).classes('bg-slate-700 text-white p-2.5 rounded shadow-sm')
 
                     andere_user = database.lade_andere_user_mit_genres(layout.aktiver_user_id)
@@ -562,6 +621,7 @@ def einstellungen_seite():
                                         return
                                     database.kopiere_genres_von_user(user_auswahl.value, layout.aktiver_user_id)
                                     ui.notify(t('genre_copy_successful'), type='positive')
+                                    ui_log_lang('log_copy_genre_success', name=user_auswahl)
                                     user_auswahl.value = None
                                     genre_liste_refresh.refresh()
                                 
@@ -587,6 +647,7 @@ def einstellungen_seite():
                                                 async def definitiv_loeschen():
                                                     if database.loesche_genre_aus_db(id_zu_loeschen):
                                                         ui.notify(f'"{name_zu_loeschen}" {t("notify_genre_deleted")}', type='info')
+                                                        ui_log_lang('log_delete_genre_success', name=name_zu_loeschen)
                                                         genre_liste_refresh.refresh()
                                                     dialog.close()
                                                 ui.button(t('delete'), on_click=definitiv_loeschen).classes('bg-red-500 text-white')

@@ -6,6 +6,7 @@ from nicegui import app, ui
 import database
 import translations
 from translations import t
+from logger import ui_log_lang
 
 # Globale Referenz für das Vorschlagsmodal, damit andere Module es öffnen können
 _letztes_vorschlag_modal = None
@@ -123,23 +124,30 @@ def quick_log_modal():
                 ui.notify(t('quick_log_warn_fields'), type='warning')
                 return
 
+            # REPARIERT: Titel direkt mithub, damit wir ihn fürs Log parat haben
             with database.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT pages FROM books WHERE id = ?", (b_id,))
+                cursor.execute("SELECT title, pages FROM books WHERE id = ?", (b_id,))
                 row = cursor.fetchone()
-                max_pages = row[0] if row and row[0] else 0
+                book_title = row[0] if row and row[0] else "Unbekanntes Buch"
+                max_pages = row[1] if row and row[1] else 0
 
             erfolg, meldung = database.trage_lese_log_ein(current_user_id, b_id, int(neue_seite), gewaehltes_datum)
             
             if erfolg:
                 ui.notify(f"{t('entry_saved')} +{meldung} {t('pages_short')}.", type='positive')
+                ui_log_lang('log_progress_saved', pages=meldung, title=book_title)
+                
                 if max_pages > 0 and int(neue_seite) >= max_pages:
                     database.schliesse_aktiven_zyklus_ab(current_user_id, b_id, end_datum=gewaehltes_datum)
                     with database.get_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute("UPDATE user_books SET status = 'READ' WHERE user_id = ? AND book_id = ?", (current_user_id, b_id))
                         conn.commit()
+                    
+                    
                     ui.notify(f"{t('book_finished')} 🎉", type='positive')
+                    ui_log_lang('log_book_finished', title=book_title)
 
                     user_settings = database.lade_user_settings(current_user_id)
                     if user_settings.get('buch_vorschlag_aktiv', False):
@@ -150,6 +158,8 @@ def quick_log_modal():
                 log_dialog.close()
                 ui.run_javascript('window.location.reload()')
             else:
+                # API- oder Eingabefehler im Terminal vermerken
+                ui_log_lang(f"[Leseprotokoll] WARNUNG: Eintrag fehlgeschlagen für '{book_title}': {meldung}")
                 ui.notify(meldung, type='warning')
 
         with ui.row().classes('w-full justify-end gap-2 mt-auto pt-2 flex-wrap shrink-0'):
