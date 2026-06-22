@@ -188,6 +188,39 @@ def navigation_regal_klick():
 def basis_layout(titel_key: str = None):
     global _letztes_vorschlag_modal
     
+    # 1. Den Header remote-user aus dem HTTP-Request fischen
+    try:
+        request = ui.context.client.request
+        proxy_user_name = request.session.get('authelia_user_name')
+    except Exception:
+        proxy_user_name = None
+
+    # 2. FLANKEN-MERKER: Wurde der Authelia-User für diesen Tab schon initialisiert?
+    # Wir speichern den Merker direkt im app.storage.user (NiceGUI-sicher!)
+    proxy_erledigt = app.storage.user.get('authelia_initial_erledigt', False)
+
+    # 3. FIRST SCAN: Nur beim allerersten Laden der Seite ausführen!
+    if not proxy_erledigt and proxy_user_name:
+        try:
+            alle_user = database.lade_alle_user()
+            user_gefunden = False
+            
+            for u_id, u_name in alle_user:
+                if u_name.strip().lower() == proxy_user_name:
+                    app.storage.user['aktiver_user_id'] = u_id
+                    user_gefunden = True
+                    break
+            
+            # Sicherheitsnetz: Wenn die Schleife durchläuft und niemanden findet
+            if not user_gefunden:
+                app.storage.user['aktiver_user_id'] = 1 # Fallback auf ID 1
+            
+            app.storage.user['authelia_initial_erledigt'] = True
+            
+        except Exception as e:
+            print(f"Fehler bei initialer Layout-User-Zuweisung: {e}")
+
+    
     current_user_id = sys.modules[__name__].aktiver_user_id
     
     alle_user = database.lade_alle_user()

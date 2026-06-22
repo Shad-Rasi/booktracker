@@ -93,7 +93,7 @@ def formatierte_daten_holen():
     for r in rows:
         b_id = r[0]
         cover_datei = f"{b_id}.jpg"
-        cover_url = f"/covers/{cover_datei}" if cover_datei in existierende_covers else "/covers/placeholder.jpg"
+        cover_url = f"/covers/{cover_datei}" if cover_datei in existierende_covers else None
         genres_des_buches = database.lade_genres_eines_buches(b_id, layout.aktiver_user_id)
 
         ergebnis.append({
@@ -232,8 +232,14 @@ def kacheln_rendern():
             cover_classes = 'w-full h-full object-cover opacity-40 grayscale transition-all' if buch['ownership'] == 'GIVEN_AWAY' else 'w-full h-full object-cover transition-all'
 
             with ui.card().classes('w-full h-auto p-0 overflow-hidden hover:shadow-lg transition-shadow duration-200 cursor-pointer flex flex-col relative').style(card_style).on('click', kachel_klick):
-                with ui.element('div').classes('relative w-full aspect-[2/3] bg-slate-50 flex items-center justify-center overflow-hidden border-b border-slate-100'):
-                    ui.image(buch['cover_url']).classes(cover_classes)
+                with ui.element('div').classes('relative w-full aspect-[2/3] bg-slate-200 dark:bg-slate-800 flex items-center justify-center overflow-hidden border-b border-slate-100 dark:border-slate-700'):
+                    # REPARIERT: Nur rendern, wenn ein echtes Cover existiert
+                    if buch['cover_url']:
+                        ui.image(buch['cover_url']).classes(cover_classes)
+                    else:
+                        # Schickes Icon im exakt gleichen Raster, wenn kein Bild da ist
+                        ui.icon('book', size='lg').classes('text-slate-400 dark:text-slate-500')
+                    
                     with ui.row().classes('absolute top-2 right-2 items-center gap-0.5 bg-white/90 backdrop-blur-sm px-1.5 py-0.5 rounded shadow-sm'):
                         ui.icon(buch['status_icon']).classes(f'text-[10px] {buch["status_color"]}')
                         ui.label(buch['status_text']).classes('text-[8px] font-bold text-slate-700 uppercase tracking-wider')
@@ -391,22 +397,11 @@ from fastapi import Request
 ## If the user exists, the user will be chosen automatically
 @app.middleware("http")
 async def proxy_header_middleware(request: Request, call_next):
-    # Wir holen den Header direkt aus dem echten HTTP-Request
     proxy_user = request.headers.get("remote-user") or request.headers.get("Remote-User")
     
     if proxy_user:
-        proxy_user = proxy_user.strip().lower()
-        try:
-            alle_user = database.lade_alle_user()
-            for u_id, u_name in alle_user:
-                if u_name.strip().lower() == proxy_user:
-                   
-                    request.session['aktiver_user_id'] = u_id
-                    
-                    app.storage.user['aktiver_user_id'] = u_id
-                    break
-        except Exception as e:
-            print(f"Fehler in Middleware-Datenbankabfrage: {e}")
+        # Wir merken uns einfach nur den Namen des Authelia-Users im Request
+        request.session['authelia_user_name'] = proxy_user.strip().lower()
 
     response = await call_next(request)
     return response
