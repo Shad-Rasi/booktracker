@@ -331,7 +331,6 @@ TRANSLATIONS = {
         'log_author_data_save_error': '[Autor] Fehler beim Abrufen von Autorendaten für {author}',
         'log_author_data_updated': '[Autor] Autorendaten für {author} erfolgreich aktualisiert',
         'log_error_creating_pdf': '[Statistik] Fehler beim Erstellen des PDFs: {error}',
-
         'log_upload_no_data': '[Einstellungen] Keine ISBN-Liste aus Datei erkannt: {error}',
         'log_export_data_successful': '[Einstellungen] Daten-Export als .csv erfolgreich',
         'log_export_data_error': '[Einstellungen] Fehler beim Daten-Export als .csv: {error}',
@@ -352,6 +351,11 @@ TRANSLATIONS = {
         'log_create_genre_error': '[Einstellungen] Genre {name} existiert schon, nichts neu hinzugefügt',
         'log_copy_genre_success': '[Einstellungen] Alle Genre von Nutzer {name} erfolgreich übernommen',
         'log_delete_genre_success': '[Einstellungen] Genre {name} erfolgreich gelöscht',
+        'log_data_scraping_isbnde_error': '[Import] Schwerer Fehler bei Scraping von isbn.de: {e}',
+        'log_data_google_API_error': '[Import] Fehler bei API Abruf von Google: {e}',
+        'log_data_openlibrary_error': '[Import] Fehler bei OpenLibrary Suche für {titel}: {e}',
+        'log_fallback_openlibrary_error': '[Import] Fehler bei Fallback OpenLibrary für {name}: {e}',
+        'log_scrape_isbnde_author_error': '[Import] Fehler bei Autorendatenabruf von ISBN.de: {e}',
 
         # --- Import / Export ---
         'import_export_title': 'Daten Import / Export',
@@ -754,6 +758,11 @@ TRANSLATIONS = {
         "log_create_genre_error": "[Settings] Genre {name} already exists, nothing added",
         "log_copy_genre_success": "[Settings] All genres from user {name} imported successfully",
         "log_delete_genre_success": "[Settings] Genre {name} deleted successfully",
+        "log_data_scraping_isbnde_error": "[Import] Severe error scraping isbn.de: {e}",
+        "log_data_google_API_error": "[Import] Error during Google API request: {e}",
+        "log_data_openlibrary_error": "[Import] Error during OpenLibrary search for {titel}: {e}",
+        "log_fallback_openlibrary_error": "[Import] Error during fallback OpenLibrary for {name}: {e}",
+        "log_scrape_isbnde_author_error": "[Import] Error retrieving author data from ISBN.de: {e}",
 
         # --- Import / Export ---
         'import_export_title': 'Data Import / Export',
