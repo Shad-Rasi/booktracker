@@ -13,6 +13,7 @@ import translations
 from layout import basis_layout
 from translations import t
 from logger import ui_log_lang, UI_LOG_BUFFER
+import api
 
 # Helper-Funktionen (bleiben funktional exakt gleich)
 def status_uebersetzen(goodreads_shelf):
@@ -683,8 +684,33 @@ def einstellungen_seite():
                     
                     ui.button(t('export_btn_text'), icon='download', on_click=exportiere_buecher).classes('bg-slate-700 hover:bg-slate-600 text-white h-[40px] w-full shadow-sm rounded text-sm py-0')
 
-                ui.label(t('settings_backup_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide mt-2 -mb-2')
+                # ==========================================
+                # NEU: GLOBALER HOME ASSISTANT API SCHALTER
+                # ==========================================
+                ui.label(t('settings_api_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide -mb-2')
+                with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
+                    with ui.element('div'):
+                        ui.label(t('api_integration')).classes(f'text-lg font-bold {text_main}')
+                        ui.label(t('api_main_desc')).classes(f'text-xs {text_sub} mb-4')
+                    
+                    async def api_umschalten():
+                        # Wir überschreiben direkt die globale Variable im api-Modul
+                        api.API_AKTIV = api_switch.value 
+                        ui.notify(t('api_status'), type='positive', duration=1)
+                        ui_log_lang('log_api_status')
+                    
+                    with ui.row().classes('w-full items-center justify-between p-3 rounded-xl bg-slate-900/10 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700/50'):
+                        with ui.column().classes('gap-0 flex-1 pr-2'):
+                            ui.label(t('api_activate')).classes('font-bold text-sm text-slate-800 dark:text-slate-100')
+                            ui.label(t('api_desc')).classes('text-[11px] text-slate-400 leading-tight mt-0.5')
+                        
+                        api_switch = ui.switch(
+                            value=api.API_AKTIV,
+                            on_change=api_umschalten
+                        ).props('color="blue"')
 
+
+                ui.label(t('settings_backup_title')).classes(f'text-lg font-bold col-span-full {text_main} uppercase tracking-wide mt-2 -mb-2')
                 # DATENSICHERUNG
                 with ui.card().classes(f'w-full p-6 border shadow-sm min-h-[250px] flex flex-col justify-between {bg_card}'):
                     with ui.element('div'):

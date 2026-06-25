@@ -12,3 +12,6 @@ beautifulsoup4
 
 # Datenexport als PDF
 weasyprint
+
+# API zur Verwendung in zB Homeassistant
+fastapi>=0.110.0

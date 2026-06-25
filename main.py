@@ -406,6 +406,9 @@ async def proxy_header_middleware(request: Request, call_next):
     response = await call_next(request)
     return response
 
+# === API ROUTER FÜR HOME ASSISTANT EINBINDEN ===
+from api import router as hs_api_router
+app.include_router(hs_api_router)
 
 ui.run(
     port=int(os.getenv("PORT", 8080)),

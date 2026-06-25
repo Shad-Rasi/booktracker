@@ -311,6 +311,12 @@ TRANSLATIONS = {
         "metadata_sources_subtitle": "Bestimme, welche APIs oder Scraper nach Buch-Metadaten (Titel, Cover, Seiten) suchen und welche Priorität sie haben.",
         "provider_isbn_de": "isbn.de (Scraper - Sehr gut für deutsche Bücher)",
         "provider_google_books": "Google Books API (Globaler Katalog)",
+        'settings_api_title': 'API',
+        'api_integration': 'Home Assistant Integration',
+        'api_main_desc': 'Globale Schnittstelle für Smarthome-Dashboards steuern.',
+        'api_activate': 'REST-API freischalten',
+        'api_status': 'API-Status aktualisiert',
+        'api_desc': 'Erlaubt den Abruf der Statistiken unter /api/v1/stats',
 
         # --- Logs ---
         "logs_import_success": "[Import] Buch gefunden via {quelle}: {title}",
@@ -357,6 +363,7 @@ TRANSLATIONS = {
         'log_data_openlibrary_error': '[Import] Fehler bei OpenLibrary Suche für {titel}: {e}',
         'log_fallback_openlibrary_error': '[Import] Fehler bei Fallback OpenLibrary für {name}: {e}',
         'log_scrape_isbnde_author_error': '[Import] Fehler bei Autorendatenabruf von ISBN.de: {e}',
+        'log_api_status': '[API] Status geändert',
 
         # --- Import / Export ---
         'import_export_title': 'Daten Import / Export',
@@ -719,6 +726,12 @@ TRANSLATIONS = {
         "metadata_sources_subtitle": "Determine which APIs or scrapers search for book metadata (title, cover, pages) and define their priority.",
         "provider_isbn_de": "isbn.de (Scraper - Best for German books)",
         "provider_google_books": "Google Books API (Global catalog)",
+        'settings_api_title': 'API',
+        'api_integration': 'Home Assistant Integration',
+        'api_main_desc': 'Control API activation',
+        'api_activate': 'Activate REST-API',
+        'api_status': 'API status updated',
+        'api_desc': 'Enable the feature to get data from /api/v1/stats',
 
         # --- Logs ---
         "logs_import_success": "[Import] Book found via {quelle}: {title}",
@@ -765,6 +778,7 @@ TRANSLATIONS = {
         "log_data_openlibrary_error": "[Import] Error during OpenLibrary search for {titel}: {e}",
         "log_fallback_openlibrary_error": "[Import] Error during fallback OpenLibrary for {name}: {e}",
         "log_scrape_isbnde_author_error": "[Import] Error retrieving author data from ISBN.de: {e}",
+        'log_api_status': '[API] Status changed',
 
         # --- Import / Export ---
         'import_export_title': 'Data Import / Export',
