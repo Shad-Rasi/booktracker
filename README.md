@@ -26,6 +26,7 @@ A sleek, privacy-first, self-hosted tracker for your physical book library. Keep
 - **📊 Reading Progress Tracking:** Log your daily reading stats, visualize your habits with clean charts, and track multiple reading cycles (including re-reads!).
 - **🖨️ PDF Report Export:** Generate and download beautiful PDF statistics of your reading year.
 - **🌍 Multi-Language & Multi-User:** Full English and German UI support out of the box.
+- **🖨️ API:** Access Booktracker-Data via an API to integrate into your smarthome smoothly.
 
 ---
 
@@ -45,6 +46,8 @@ services:
       - TZ=Europe/Berlin
       - STORAGE_SECRET=change_me_to_a_long_random_string
       - GOOGLE_API_KEY=optional_google_books_key
+      ## Optional, if you use this to send a header to authenticate
+      - BOOKTRACKER_API_KEY=change_me_to_a_long_random_string_too
     volumes:
       - ./data:/app/data
 
@@ -106,6 +109,7 @@ All configuration is handled via environment variables (or your `.env` file):
 | --- | --- | --- | --- |
 | `STORAGE_SECRET` | **Yes** | *None* | A long random string used to encrypt session data securely. |
 | `GOOGLE_API_KEY` | No | *None* | Optional Google Books API key for higher rate limits during lookups. |
+| `BOOKTRACKER_API_KEY` | No | *None* | Optional long random string used to authenticate you in the API |
 | `TZ` | No | `UTC` | Timezone for accurate reading logs (e.g., `Europe/Berlin`). |
 | `PORT` | No | `8080` | The internal port NiceGUI listens on. |
 
